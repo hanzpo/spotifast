@@ -178,6 +178,10 @@ pub struct LocalState {
     pub active_client: String,
     pub error: Option<String>,
     pub seek_sequence: u64,
+    /// The engine is fetching a track right now, even when the previous
+    /// track's `playback` still reads `Playing` so its controls stay visible
+    /// through the swap.
+    pub loading: bool,
     /// A newly loaded track, including another play of the same URI.
     pub track_sequence: u64,
     /// Another play of the same track started, and its start position has
@@ -805,6 +809,7 @@ fn apply_event(state: &mut LocalState, event: PlayerEvent) -> bool {
     match event {
         PlayerEvent::Stopped { .. } => {
             let mut changed = set(&mut state.playback, Playback::Stopped);
+            changed |= set(&mut state.loading, false);
             changed |= set(&mut state.position_ms, 0);
             changed |= set(&mut state.position_at, None);
             changed
@@ -815,6 +820,7 @@ fn apply_event(state: &mut LocalState, event: PlayerEvent) -> bool {
             } else {
                 false
             };
+            changed |= set(&mut state.loading, true);
             changed |= set(&mut state.position_ms, position_ms);
             changed |= set(&mut state.position_at, None);
             changed |= set(&mut state.error, None);
@@ -824,11 +830,13 @@ fn apply_event(state: &mut LocalState, event: PlayerEvent) -> bool {
             set(&mut state.playback, Playback::Playing);
             set(&mut state.position_ms, position_ms);
             state.position_at = Some(Instant::now());
+            state.loading = false;
             start_replay(state);
             true
         }
         PlayerEvent::Paused { position_ms, .. } => {
             let mut changed = set(&mut state.playback, Playback::Paused);
+            changed |= set(&mut state.loading, false);
             changed |= set(&mut state.position_ms, position_ms);
             changed |= set(&mut state.position_at, None);
             changed | start_replay(state)
@@ -862,17 +870,27 @@ fn apply_event(state: &mut LocalState, event: PlayerEvent) -> bool {
             state.track_sequence = state.track_sequence.wrapping_add(1);
             true
         }
-        PlayerEvent::Unavailable { track_id, .. } => set(
-            &mut state.error,
-            Some(format!(
-                "This item isn't available: {}",
-                track_id.to_uri().unwrap_or_default()
-            )),
-        ),
-        PlayerEvent::AudioKeyUnavailable { .. } => set(
-            &mut state.error,
-            Some("Spotify refused the audio key. Try again later".into()),
-        ),
+        PlayerEvent::Unavailable { track_id, .. } => {
+            // A failed load never reaches Playing, so nothing else would
+            // turn the spinner off.
+            let mut changed = set(
+                &mut state.error,
+                Some(format!(
+                    "This item isn't available: {}",
+                    track_id.to_uri().unwrap_or_default()
+                )),
+            );
+            changed |= set(&mut state.loading, false);
+            changed
+        }
+        PlayerEvent::AudioKeyUnavailable { .. } => {
+            let mut changed = set(
+                &mut state.error,
+                Some("Spotify refused the audio key. Try again later".into()),
+            );
+            changed |= set(&mut state.loading, false);
+            changed
+        }
         PlayerEvent::VolumeChanged { volume } => set(&mut state.volume, volume),
         PlayerEvent::SessionConnected { user_name, .. } => {
             let mut changed = set(&mut state.connected, true);
@@ -1440,6 +1458,83 @@ mod tests {
             },
         );
         assert_eq!(state.playback, Playback::Playing);
+    }
+
+    /// Every skip and end-of-track advance loads while the previous track
+    /// still shows as playing. The load itself is carried by `loading`, so
+    /// the button spinner follows the engine without flipping the transport.
+    #[test]
+    fn a_mid_song_load_marks_the_state_loading_until_it_starts() {
+        let mut state = LocalState {
+            playback: Playback::Playing,
+            ..LocalState::default()
+        };
+        assert!(apply_event(
+            &mut state,
+            PlayerEvent::Loading {
+                play_request_id: 2,
+                track_id: uri(),
+                position_ms: 30_000,
+            },
+        ));
+        assert_eq!(state.playback, Playback::Playing);
+        assert!(state.loading);
+
+        apply_event(
+            &mut state,
+            PlayerEvent::Playing {
+                play_request_id: 2,
+                track_id: uri(),
+                position_ms: 0,
+            },
+        );
+        assert!(!state.loading);
+
+        apply_event(
+            &mut state,
+            PlayerEvent::Loading {
+                play_request_id: 3,
+                track_id: uri(),
+                position_ms: 0,
+            },
+        );
+        assert!(state.loading);
+        apply_event(
+            &mut state,
+            PlayerEvent::Stopped {
+                play_request_id: 3,
+                track_id: uri(),
+            },
+        );
+        assert!(!state.loading);
+
+        // A load that fails has no Playing to clear the spinner, so the
+        // failure events must do it themselves.
+        for failure in 4..=5 {
+            apply_event(
+                &mut state,
+                PlayerEvent::Loading {
+                    play_request_id: failure,
+                    track_id: uri(),
+                    position_ms: 0,
+                },
+            );
+            assert!(state.loading);
+            let failed = if failure == 4 {
+                PlayerEvent::Unavailable {
+                    play_request_id: failure,
+                    track_id: uri(),
+                }
+            } else {
+                PlayerEvent::AudioKeyUnavailable {
+                    play_request_id: failure,
+                    track_id: uri(),
+                }
+            };
+            apply_event(&mut state, failed);
+            assert!(!state.loading, "failure {failure} stops the spinner");
+            assert!(state.error.is_some(), "failure {failure} reports why");
+        }
     }
 
     #[test]

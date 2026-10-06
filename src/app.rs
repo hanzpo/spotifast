@@ -1384,7 +1384,10 @@ impl App {
                     _ => self.local.position_now(),
                 },
                 playing,
-                loading: self.local.playback == Playback::Loading,
+                // `Playback` keeps reading `Playing` through a load so the
+                // controls stay visible; the engine's own loading flag is
+                // what the spinner follows.
+                loading: self.local.loading,
                 shuffle: self.shuffle_wanted,
                 repeat: self.local.repeat,
                 volume_percent: volume_to_percent(self.local.volume),
@@ -20491,6 +20494,51 @@ mod tests {
         );
         app.note_listening();
         assert_eq!(app.listening.as_ref().unwrap().uri, rows[0]);
+        app.backend.shutdown();
+    }
+
+    /// Every skip and end-of-track advance loads the next track while the
+    /// previous one still shows as playing. The engine's loading report must
+    /// turn the transport's spinner on without disturbing that playing face,
+    /// and the track that starts must turn it off again.
+    #[test]
+    fn a_load_reported_mid_song_shows_the_button_spinner() {
+        let mut app = headless_app();
+        app.remote = None;
+        app.selected_device = None;
+        app.local = LocalState {
+            connected: true,
+            track: Some(crate::player::LocalTrack {
+                uri: "spotify:track:a".into(),
+                title: "A".into(),
+                duration_ms: 100_000,
+                ..Default::default()
+            }),
+            playback: Playback::Playing,
+            position_ms: 30_000,
+            ..Default::default()
+        };
+
+        let mut loading = app.local.clone();
+        loading.loading = true;
+        app.handle_local(loading);
+        app.refresh_frame_now();
+        let now = app.now_playing().unwrap();
+        assert!(now.playing, "the transport keeps its playing face");
+        assert!(now.loading, "the disc follows the engine's load");
+
+        let mut started = app.local.clone();
+        started.loading = false;
+        started.track = Some(crate::player::LocalTrack {
+            uri: "spotify:track:b".into(),
+            title: "B".into(),
+            duration_ms: 100_000,
+            ..Default::default()
+        });
+        started.track_sequence += 1;
+        app.handle_local(started);
+        app.refresh_frame_now();
+        assert!(!app.now_playing().unwrap().loading);
         app.backend.shutdown();
     }
 
