@@ -121,33 +121,8 @@ current-track pickup.
   Like and Unlike are kept over lagging reads until Spotify confirms them.
 - Spotifast has no telemetry, analytics, or hosted service. When the lyrics
   panel is open and Spotify has no lyrics, it sends the track's artist, title,
-  album, and length to [lrclib.net](https://lrclib.net). It also checks
-  api.github.com once a day for updates. You can turn off automatic checks in
-  Settings, or request one there at any time. On macOS, **Check for Updates**
-  is also in the application menu.
-
-  On Windows, macOS, and Linux, downloading an update fetches release metadata and
-  `checksums.txt` from the project's GitHub release, then the matching binary
-  archive, Windows installer, or universal macOS DMG. Spotifast checks the published SHA-256 digest
-  and the portable executable's reported version before offering a restart.
-  Automatic downloads are optional; installation always waits for your click.
-  Checks and downloads do not open the update popup. The green update pill opens
-  it on request; closing the popup does not cancel a download.
-  No Spotify credential is sent. These are GitHub-hosted checksums, not a
-  separate publisher signature.
-
-  Updates stage their files in a private `.spotifast-update-*` directory beside
-  the application so replacement stays on the same filesystem. The directory
-  retains the previous executable or Mac app bundle and `result.txt` for recovery and diagnosis.
-  Helper startup errors are retained in `helper.log`. On macOS the helper runs
-  from a copy of the whole signed bundle in that directory, so replacing or
-  restoring the installed app never moves the helper's own code.
-  Settings, caches and credential stores are not replaced. Package-manager
-  installs keep their package-manager update path. Mac updates verify the bundle
-  identifier, version and code signature before replacing the whole app bundle.
-  A Developer ID installation also requires the same signing team and a passing
-  macOS security assessment. Apps running from a disk image or an App Translocation
-  directory must be moved to a writable installation directory first.
+  album, and length to [lrclib.net](https://lrclib.net). It does not check
+  for or download updates.
 
 ## Collection loading and artwork
 
@@ -357,9 +332,8 @@ The mode selects the protocol. Host and port are separate fields.
 These settings apply to Spotifast's requests. The external browser used
 for Spotify approval keeps its own network and proxy settings.
 
-The Web API, artwork, lyrics, update checks and downloads, and MilkDrop preset
-downloads follow that mode. Update downloads retain their release-host redirect
-restrictions and checksum verification. Local receivers on the LAN are never sent through a proxy.
+The Web API, artwork, lyrics, and MilkDrop preset downloads follow that mode.
+Local receivers on the LAN are never sent through a proxy.
 
 Local playback can only use an unauthenticated, plaintext HTTP proxy: that is
 what librespot's CONNECT client supports. Proxy login still covers catalogue

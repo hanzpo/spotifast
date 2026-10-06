@@ -8,8 +8,8 @@ use crate::settings::ProxyConfig;
 /// A cheap-to-clone handle to the process HTTP client.
 ///
 /// Replacing the inner client updates every clone: the Web API, token
-/// refresh, artwork, lyrics, and the update check all pick up a new proxy
-/// on the next request.
+/// refresh, artwork, and lyrics all pick up a new proxy on the next
+/// request.
 #[derive(Clone)]
 pub struct Http {
     inner: Arc<RwLock<Result<reqwest::Client, String>>>,
@@ -83,9 +83,7 @@ fn client_builder(proxy: &ProxyConfig) -> Result<reqwest::ClientBuilder, String>
     apply_proxy(reqwest::Client::builder().user_agent(user_agent()), proxy)
 }
 
-pub(crate) fn blocking_builder(
-    proxy: &ProxyConfig,
-) -> Result<reqwest::blocking::ClientBuilder, String> {
+fn blocking_builder(proxy: &ProxyConfig) -> Result<reqwest::blocking::ClientBuilder, String> {
     apply_blocking_proxy(
         reqwest::blocking::Client::builder().user_agent(user_agent()),
         proxy,

@@ -275,9 +275,6 @@ pub struct Settings {
     pub keep_playing_in_background: bool,
     /// Show the interactive Now Playing widget when hovering over the MacBook notch.
     pub mac_notch_widget: bool,
-    /// Ask GitHub once a day whether a newer release exists.
-    pub check_for_updates: bool,
-    pub download_updates_automatically: bool,
     /// Context URIs and the local Liked Songs key, in pin order.
     pub pinned_contexts: Vec<String>,
     /// Older settings keep Liked Songs first until it is moved or unpinned.
@@ -425,8 +422,6 @@ impl Default for Settings {
             playback_authorized: false,
             keep_playing_in_background: true,
             mac_notch_widget: false,
-            check_for_updates: true,
-            download_updates_automatically: false,
             pinned_contexts: Vec::new(),
             liked_songs_pinned: true,
             sidebar_order: Vec::new(),
@@ -1164,6 +1159,15 @@ mod tests {
         let settings: Settings =
             serde_json::from_str(r#"{"player_bar_vis":"waveform","tracklist_compact":true}"#)
                 .unwrap();
+        assert!(settings.tracklist_compact);
+    }
+
+    #[test]
+    fn settings_from_before_the_updater_was_removed_still_load() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"check_for_updates":true,"download_updates_automatically":true,"tracklist_compact":true}"#,
+        )
+        .unwrap();
         assert!(settings.tracklist_compact);
     }
 

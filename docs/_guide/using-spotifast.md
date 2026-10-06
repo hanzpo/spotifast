@@ -277,17 +277,8 @@ random token). Use the command rather than the channel itself.
 
 ## Updates
 
-The Windows installer, Mac app, and portable Windows and Linux downloads
-update from inside Spotifast. Click the green update button to download a
-release, then choose when to restart and install it. Settings can enable
-automatic background downloads; restarting always waits for your click.
-Closing the update window keeps a download running. You can also check for a
-new release from Settings, or on macOS from the application menu.
-
-Spotifast checks each download before installing it. An interrupted or damaged
-download leaves the running app alone, and a failed startup restores the
-previous installation. Updates keep your settings and sign-ins. On macOS,
-move Spotifast to Applications before updating it.
+Spotifast does not check for or install updates itself. To update, replace
+it with a newer build. Updates keep your settings and sign-ins.
 
 Package-managed installations update through their package manager,
 including Homebrew, Flatpak, apt, dnf, pacman, Nix, and Cargo. Other
@@ -388,15 +379,14 @@ Use your desktop's window rule or shortcut instead. In KDE Plasma, configure
 Window Management**. Your saved preference remains available when you use
 Spotifast on Windows, macOS, or X11 again.
 
-Since 0.8.0, the top bar reserves room for the device and update
-badges beside Search. In narrow windows those badges show only their icons.
+Since 0.8.0, the top bar reserves room for the device badge beside
+Search. In narrow windows the badge shows only its icon.
 The bar stays above the page. Library, Queue and Lyrics keep their full height.
 When the window narrows, Library, Queue and Lyrics give up width before the
 top bar runs out of room, and return to the widths you chose once it widens.
 With Queue or Lyrics open, the window cannot be made narrower than the room
 they need beside the page.
-Hover to read the device name or available version; click to open the device
-picker or update window.
+Hover to read the device name; click to open the device picker.
 
 ## MacBook notch widget
 

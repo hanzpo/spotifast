@@ -35,7 +35,6 @@ fn the_command_reports_its_name_and_passes_the_update_version_check() {
             .unwrap()
             .contains("Usage: spotifast")
     );
-    assert_eq!(spotifast::updates::CONFIG.slug, "spotifast");
 }
 
 /// The app's name before the rename is gone from everything but the past

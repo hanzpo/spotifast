@@ -1087,11 +1087,6 @@ pub enum Action {
     PauseLyricsFollow,
     RetryLyrics,
     ToggleDevicesPopup,
-    /// Ask GitHub for the latest release and report the result to the user.
-    CheckForUpdates,
-    ShowUpdate,
-    DownloadUpdate,
-    InstallUpdate,
     SettingsChanged,
     SetTheme(crate::settings::ThemeChoice),
     /// Draw the interface in this language from the next frame on.

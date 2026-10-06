@@ -19,7 +19,6 @@ pub mod settings;
 pub mod show;
 pub mod sidebar;
 pub mod topbar;
-mod update;
 pub mod widgets;
 pub mod winamp;
 
@@ -43,7 +42,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if !signed_in {
         player_bar::end_tint_session(ctx);
         login::show(app, ui, connecting);
-        update::show(app, ctx);
         toasts(app, ctx, 20.0);
         window_controls(ui, &app.palette, app.locale);
         window_resize(ui);
@@ -79,7 +77,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
     devices::popup(app, ctx);
     dialogs::show(app, ctx);
-    update::show(app, ctx);
     widgets::drag_ghost(ctx, &app.palette, app.locale);
     toasts(app, ctx, theme::PLAYER_BAR_HEIGHT + 16.0);
     window_controls(ui, &app.palette, app.locale);

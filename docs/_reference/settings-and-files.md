@@ -266,7 +266,6 @@ main fields are:
 | `milkdrop_size` | `640, 480` | The MilkDrop window's size in points |
 | `keep_playing_in_background` | `true` | Close to tray |
 | `mac_notch_widget` | `false` | Show interactive Now Playing widget when hovering over the MacBook notch (macOS only) |
-| `check_for_updates` | `true` | Ask GitHub once a day for a newer release |
 | `web_client_id` | none | Optional personal Spotify app id used alongside shared coverage |
 | `personal_app_nudge_at` | none | Legacy daily-reminder timestamp, retained for older releases |
 | `personal_app_intro_seen` | `false` | Whether the Premium personal-app introduction was dismissed or followed (available since 0.8.0) |
@@ -303,15 +302,14 @@ settings.
 `--demo-page` opens a page, such as `home`, `playlist:pl1`, or `artist:art0`,
 and `--demo-show` adds surfaces on top of it: a comma separated list of
 `queue`, `playing-next`, `devices`, `shortcuts`, `premium`, `create`, `duplicate`, `light`,
-`focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `update`, `personal-app`,
+`focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `personal-app`,
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
 `library-grid-wide`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`,
 `lyrics-fullscreen-view`, `lyrics-fullscreen-instrumental`, `signed-out`, and `connecting`. The Library variants show the list or cover grid with
 a normal, narrow, or wide sidebar and collapsed artwork for matching captures.
 `shuffle-selected` and `shuffle-started` capture the selected-mode and
-playback-started outcomes of a collection Shuffle click. `update` shows a sample
-update badge for checking its layout. `personal-app` shows the personal Spotify
+playback-started outcomes of a collection Shuffle click. `personal-app` shows the personal Spotify
 app introduction.
 `signed-out` and `connecting` show the sign-in card before and while the
 session connects.

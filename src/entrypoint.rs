@@ -31,10 +31,6 @@ struct Cli {
 
     #[cfg(feature = "demo")]
     #[arg(long, requires = "demo")]
-    demo_update_feed: Option<String>,
-
-    #[cfg(feature = "demo")]
-    #[arg(long, requires = "demo")]
     demo_data: Option<std::path::PathBuf>,
 
     /// Page to open in demo mode, e.g. `home`, `playlist:pl1`, `artist:art0`.
@@ -43,7 +39,7 @@ struct Cli {
     demo_page: Option<String>,
 
     /// Extra demo surfaces: a comma-separated list of `queue`, `playing-next`,
-    /// `devices`, `shortcuts`, `create`, `light`, `focus`, `update`, `personal-app`,
+    /// `devices`, `shortcuts`, `create`, `light`, `focus`, `personal-app`,
     /// `windows-taskbar`, `german`, `lyrics`, `lyrics-fullscreen`, `collection-loading`,
     /// `shuffle-selected`, `shuffle-started`, `undated-mix`, `signed-out`, `connecting`, `library-list`,
     /// `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
@@ -337,10 +333,6 @@ fn format_devices(snapshot: &str) -> String {
 pub(crate) fn run() -> eframe::Result<()> {
     #[cfg(target_os = "linux")]
     configure_pulseaudio_properties();
-    // First of all: `--apply-update <job>` makes this process the update
-    // helper, which installs and exits; otherwise the receipt and error an
-    // update relaunch carries are taken out of the arguments.
-    let launch = fastframe_update::intercept(&spotifast::updates::CONFIG);
     // A MilkDrop child launch is a bare visualiser window, not the app: it has
     // its own event loop and OpenGL context, reads the sound from a shared
     // buffer, and never touches the app's state. Handle it before anything
@@ -350,8 +342,8 @@ pub(crate) fn run() -> eframe::Result<()> {
         std::process::exit(spotifast::milkdrop::child::run(args));
     }
 
-    let cli = Cli::from_arg_matches(&Cli::command().get_matches_from(&launch.arguments))
-        .unwrap_or_else(|error| error.exit());
+    let cli =
+        Cli::from_arg_matches(&Cli::command().get_matches()).unwrap_or_else(|error| error.exit());
     // Demo mode invents plays, settings, and a signed-in account. Without a
     // folder of its own it would write them into the real profile, where
     // they would pass for the user's history.
@@ -494,10 +486,6 @@ pub(crate) fn run() -> eframe::Result<()> {
     if load_themes {
         app.load_custom_themes(&waker);
     }
-    app.update_receipt = launch.receipt;
-    if let Some(error) = launch.error {
-        app.report_update_failure(error);
-    }
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
     }
@@ -508,22 +496,6 @@ pub(crate) fn run() -> eframe::Result<()> {
     if demo {
         spotifast::demo::populate(&mut app);
         spotifast::demo::apply_flags(&mut app, cli.demo_page.as_deref(), cli.demo_show.as_deref());
-        if let Some(feed) = &cli.demo_update_feed {
-            match fastframe_update::Source::local(feed) {
-                Ok(source) => app.update_source = source,
-                Err(error) => {
-                    eprintln!("{error:#}");
-                    std::process::exit(2);
-                }
-            }
-            app.update_restart_arguments =
-                vec!["--demo".into(), "--demo-page".into(), "settings".into()];
-            if let Some(base) = &cli.demo_data {
-                app.update_restart_arguments
-                    .extend(["--demo-data".into(), base.to_string_lossy().into_owned()]);
-            }
-            app.actions.push(spotifast::model::Action::CheckForUpdates);
-        }
         if let Some(locale) = cli.demo_language {
             app.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
             app.locale = locale;
@@ -1248,7 +1220,6 @@ impl eframe::App for Shell {
                 MenuCommand::Sidebar => Action::ToggleSidebar,
                 MenuCommand::Queue => Action::ToggleQueuePanel,
                 MenuCommand::Settings => Action::Open(Page::Settings),
-                MenuCommand::CheckForUpdates => Action::CheckForUpdates,
                 MenuCommand::Shortcuts => Action::ShowDialog(Dialog::Shortcuts),
                 MenuCommand::Back => Action::Back,
                 MenuCommand::Forward => Action::Forward,
@@ -1302,13 +1273,6 @@ impl eframe::App for Shell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let app = &mut *self.app;
         app.frame_ui(ui);
-        if let Some(receipt) = app.update_receipt.take() {
-            std::thread::spawn(move || {
-                if let Err(error) = receipt.acknowledge() {
-                    log::error!("Could not confirm the update: {error:#}");
-                }
-            });
-        }
         #[cfg(windows)]
         self.thumbbar
             .sync(app.thumb_state(ui.ctx().system_theme() != Some(egui::Theme::Light)));

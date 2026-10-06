@@ -442,11 +442,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let autoplay = gettext(locale, "Autoplay");
     let gapless = gettext(locale, "Gapless playback");
     let keep_playing = gettext(locale, "Keep music playing when the window closes");
-    let update_checks = gettext(locale, "Automatic update checks");
     let audio_cache = gettext(locale, "Audio cache");
     let apply_playback = gettext(locale, "Apply and restart playback");
     let apply_playback_note = gettext(locale, "Restart local playback to apply these settings.");
-    let download_updates = gettext(locale, "Download updates automatically");
     let playback_rows = [
         RowText::new(
             // Translators: {status} is a playback state such as Ready or Not set up.
@@ -488,10 +486,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             .to_owned(),
         ),
         RowText::new(
-            update_checks.clone(),
-            gettext(locale, "Checks GitHub once a day. No personal data is sent."),
-        ),
-        RowText::new(
             gettext(locale, "Audio output"),
             gettext(
                 locale,
@@ -513,13 +507,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ),
         RowText::new(apply_playback.clone(), apply_playback_note.clone()).when(playback_dirty),
         RowText::new(gettext(locale, "Playback settings applied"), "").when(!playback_dirty),
-        RowText::new(
-            download_updates.clone(),
-            gettext(
-                locale,
-                "Downloads in the background. You choose when to restart.",
-            ),
-        ),
         RowText::new(
             gettext(locale, "MacBook notch widget"),
             gettext(
@@ -665,7 +652,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             #[cfg(target_os = "macos")]
-            filtered_row(ui, &palette, &needle, &playback, &playback_rows[14], |ui| {
+            filtered_row(ui, &palette, &needle, &playback, &playback_rows[12], |ui| {
                 if widgets::switch(
                     ui,
                     &palette,
@@ -677,32 +664,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     changed = true;
                 }
             });
-            filtered_row(ui, &palette, &needle, &playback, &playback_rows[7], |ui| {
-                if widgets::switch(
-                    ui,
-                    &palette,
-                    &update_checks,
-                    &mut app.settings.check_for_updates,
-                )
-                .changed()
-                {
-                    changed = true;
-                }
-            });
-            filtered_row(ui, &palette, &needle, &playback, &playback_rows[13], |ui| {
-                if widgets::switch(
-                    ui,
-                    &palette,
-                    &download_updates,
-                    &mut app.settings.download_updates_automatically,
-                )
-                .changed()
-                {
-                    changed = true;
-                }
-            });
             if cfg!(target_os = "linux") {
-                filtered_row(ui, &palette, &needle, &playback, &playback_rows[8], |ui| {
+                filtered_row(ui, &palette, &needle, &playback, &playback_rows[7], |ui| {
                     let current = app
                         .settings
                         .platform_backend()
@@ -728,7 +691,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
             #[cfg(windows)]
-            filtered_row(ui, &palette, &needle, &playback, &playback_rows[9], |ui| {
+            filtered_row(ui, &palette, &needle, &playback, &playback_rows[8], |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     let current = app.settings.audio_buffer_ms;
@@ -744,7 +707,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
             });
-            filtered_row(ui, &palette, &needle, &playback, &playback_rows[10], |ui| {
+            filtered_row(ui, &palette, &needle, &playback, &playback_rows[9], |ui| {
                 // The control area lays out right-to-left: add the rightmost item first.
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -777,8 +740,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(4.0);
             if playback_dirty
+                || playback_rows[10].matches(&needle, &playback)
                 || playback_rows[11].matches(&needle, &playback)
-                || playback_rows[12].matches(&needle, &playback)
             {
                 ui.horizontal(|ui| {
                     if playback_dirty {
@@ -1788,8 +1751,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         locale,
         "Built with Rust, egui, and librespot. Not affiliated with Spotify.",
     );
-    let check_for_updates = gettext(locale, "Check for updates");
-    let checking = gettext(locale, "Checking…");
     let keyboard_shortcuts = gettext(locale, "Keyboard shortcuts");
     let source_code = gettext(locale, "Source code");
     let about_rows = [
@@ -1797,10 +1758,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             format!("Spotifast {}", env!("CARGO_PKG_VERSION")),
             built_with.clone(),
         ),
-        RowText::new(
-            format!("{check_for_updates} {checking}"),
-            format!("{keyboard_shortcuts} {source_code}"),
-        ),
+        RowText::new(keyboard_shortcuts.to_string(), source_code.to_string()),
     ];
     if section_matches(&needle, &about, &about_rows) {
         any_visible = true;
@@ -1824,17 +1782,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let check_label = if app.update_checking {
-                    &checking
-                } else {
-                    &check_for_updates
-                };
-                if theme::soft_button(ui, &palette, Some(Icon::Refresh), check_label, false)
-                    .clicked()
-                    && !app.update_checking
-                {
-                    app.actions.push(Action::CheckForUpdates);
-                }
                 if theme::soft_button(ui, &palette, Some(Icon::Info), &keyboard_shortcuts, false)
                     .clicked()
                 {

@@ -59,8 +59,6 @@ fastframe-tray = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1" }
 fastframe-shell = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1" }
 # The macOS title-bar double-click setting (does nothing elsewhere).
 fastframe-macos = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1" }
-# Self-update from GitHub releases, on the reqwest client below.
-fastframe-update = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1", features = ["reqwest"] }
 # The audio device stream: it pauses, so a paused player costs no CPU (#636),
 # follows the default output and reopens after a failure. Its cpal 0.18
 # cannot share a build with the cpal 0.16 of librespot's rodio backend (both
@@ -126,8 +124,8 @@ protobuf = "3"
 # build aborts on panic, so it is left out. rodio supplies the mixer and the
 # queue only; fastframe-audio below owns the device stream.
 rodio = { version = "0.21", default-features = false }
-# `socks` is SOCKS5 proxy support for the Web API, artwork, lyrics, and
-# update checks. HTTP proxies work without it. `system-proxy` reads the OS
+# `socks` is SOCKS5 proxy support for the Web API, artwork, and lyrics.
+# HTTP proxies work without it. `system-proxy` reads the OS
 # proxy on macOS and Windows when the mode is System; Linux uses environment
 # variables either way.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip", "http2", "blocking", "socks", "system-proxy"] }

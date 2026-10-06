@@ -550,16 +550,6 @@ pub struct App {
     pending_pastes: Vec<PendingPaste>,
     /// Sidebar folders rolled up, by their rootlist ids.
     pub collapsed_folders: Vec<String>,
-    /// A newer release than this build, once GitHub has said so.
-    pub update: Option<crate::updates::Release>,
-    last_update_check: Option<Instant>,
-    pub update_checking: bool,
-    pub show_update: bool,
-    pub update_download: crate::updates::DownloadState,
-    pub update_source: crate::updates::Source,
-    pub update_support: Option<Result<crate::updates::Installation, String>>,
-    pub update_restart_arguments: Vec<String>,
-    pub update_receipt: Option<fastframe_update::Receipt>,
     /// Winamp window state and active skin.
     pub winamp: crate::winamp::WinampState,
 }
@@ -935,15 +925,6 @@ impl App {
             copied_songs: Vec::new(),
             pending_pastes: Vec::new(),
             collapsed_folders: session.collapsed_folders.clone(),
-            update: None,
-            last_update_check: None,
-            update_checking: false,
-            show_update: false,
-            update_download: crate::updates::DownloadState::Idle,
-            update_source: crate::updates::Source::default(),
-            update_support: None,
-            update_restart_arguments: Vec::new(),
-            update_receipt: None,
             winamp: crate::winamp::WinampState::new(session.winamp_pos, tap, eq),
         };
         app.local.volume = app.settings.volume;
@@ -1806,17 +1787,7 @@ impl App {
 
     fn handle_backend_events(&mut self, events: Vec<Event>) {
         for event in events {
-            if self.offline
-                && (self.update_source.is_github()
-                    || !matches!(
-                        &event,
-                        Event::UpdateChecked { .. }
-                            | Event::UpdateSupport(_)
-                            | Event::UpdateProgress { .. }
-                            | Event::UpdateDownloaded(_)
-                            | Event::UpdateInstalling(_)
-                    ))
-            {
+            if self.offline {
                 continue;
             }
             match event {
@@ -1962,72 +1933,6 @@ impl App {
                     Err(error) => log::debug!("album type unavailable for {uri}: {error}"),
                 },
                 Event::WebApp { client_id } => self.web_app = client_id,
-                Event::UpdateSupport(result) => {
-                    if result.is_ok()
-                        && self.settings.download_updates_automatically
-                        && matches!(self.update_download, crate::updates::DownloadState::Idle)
-                    {
-                        self.actions.push(Action::DownloadUpdate);
-                    }
-                    self.update_support = Some(result);
-                }
-                Event::UpdateProgress { received, total } => {
-                    self.update_download =
-                        crate::updates::DownloadState::Downloading { received, total };
-                }
-                Event::UpdateDownloaded(result) => {
-                    self.update_download = match result {
-                        Ok(prepared) => crate::updates::DownloadState::Ready(prepared),
-                        Err(error) => crate::updates::DownloadState::Failed(error),
-                    };
-                }
-                Event::UpdateInstalling(result) => match result {
-                    Ok(()) => self.actions.push(Action::Quit),
-                    Err(error) => {
-                        self.update_download = crate::updates::DownloadState::Failed(error)
-                    }
-                },
-                Event::UpdateChecked { manual, result } => {
-                    self.update_checking = false;
-                    match result {
-                        Ok(Some(notice)) => {
-                            if manual || self.update.as_ref() != Some(&notice) {
-                                self.toast(
-                                    // Translators: {version} is a version number such as 1.4.0.
-                                    gettext(self.locale, "Spotifast {version} is available")
-                                        .replace("{version}", &notice.version.to_string()),
-                                );
-                            }
-                            self.update = Some(notice);
-                            if self.settings.download_updates_automatically
-                                && matches!(
-                                    self.update_download,
-                                    crate::updates::DownloadState::Idle
-                                )
-                            {
-                                self.backend.send(Command::InspectUpdate);
-                            }
-                        }
-                        Ok(None) => {
-                            self.update = None;
-                            if manual {
-                                self.toast(gettext(self.locale, "Spotifast is up to date"));
-                            } else {
-                                log::debug!("this is the newest release");
-                            }
-                        }
-                        Err(error) if manual => {
-                            self.toast_error(
-                                // Translators: {error} is an error message.
-                                gettext(self.locale, "Couldn't check for updates: {error}")
-                                    .replace("{error}", &error.to_string()),
-                            );
-                        }
-                        Err(error) => {
-                            log::debug!("could not check for a newer release: {error}");
-                        }
-                    }
-                }
             }
         }
     }
@@ -2745,15 +2650,6 @@ impl App {
         }
         self.toasts
             .retain(|toast| toast.created.elapsed() < TOAST_LIFETIME);
-
-        if self.settings.check_for_updates
-            && !self.offline
-            && self
-                .last_update_check
-                .is_none_or(|at| at.elapsed() >= crate::updates::CHECK_INTERVAL)
-        {
-            self.check_for_updates(false);
-        }
 
         if self.is_connected() && !self.offline {
             self.request_resume_track();
@@ -8979,43 +8875,6 @@ impl App {
                     self.backend.send(Command::DiscoverReceivers);
                 }
             }
-            Action::CheckForUpdates => self.check_for_updates(true),
-            Action::ShowUpdate => {
-                self.show_update = true;
-                if self.update_support.is_none() {
-                    self.backend.send(Command::InspectUpdate);
-                }
-            }
-            Action::DownloadUpdate => {
-                if matches!(
-                    self.update_download,
-                    crate::updates::DownloadState::Idle | crate::updates::DownloadState::Failed(_)
-                ) && let Some(release) = self.update.clone()
-                {
-                    self.update_download = crate::updates::DownloadState::Downloading {
-                        received: 0,
-                        total: 0,
-                    };
-                    self.backend.send(Command::DownloadUpdate {
-                        release,
-                        source: self.update_source.clone(),
-                    });
-                }
-            }
-            Action::InstallUpdate => {
-                if matches!(
-                    self.update_download,
-                    crate::updates::DownloadState::Ready(_)
-                ) && let crate::updates::DownloadState::Ready(prepared) = std::mem::replace(
-                    &mut self.update_download,
-                    crate::updates::DownloadState::Installing,
-                ) {
-                    self.backend.send(Command::InstallUpdate {
-                        prepared,
-                        arguments: self.update_restart_arguments.clone(),
-                    });
-                }
-            }
             Action::SetLibrarySort { shelf, sort } => {
                 if sort.supports(shelf) {
                     self.settings.library_sort.insert(shelf, sort);
@@ -9474,28 +9333,6 @@ impl App {
             message,
             kind: ToastKind::Error,
             created: Instant::now(),
-        });
-    }
-
-    pub fn report_update_failure(&mut self, error: String) {
-        self.toast_error(error);
-    }
-
-    fn check_for_updates(&mut self, manual: bool) {
-        if self.update_checking
-            || (self.offline && self.update_source.is_github())
-            || !matches!(
-                self.update_download,
-                crate::updates::DownloadState::Idle | crate::updates::DownloadState::Failed(_)
-            )
-        {
-            return;
-        }
-        self.update_checking = true;
-        self.last_update_check = Some(Instant::now());
-        self.backend.send(Command::CheckForUpdates {
-            manual,
-            source: self.update_source.clone(),
         });
     }
 
@@ -17983,96 +17820,6 @@ mod tests {
         assert!(
             !app.table_rows.contains_key(&Page::Playlist("pl0".into())),
             "its table-row copy must go with it"
-        );
-    }
-
-    #[test]
-    fn update_checks_leave_the_popup_closed_until_requested() {
-        for manual in [false, true] {
-            let mut app = headless_app();
-            app.handle_backend_events(vec![Event::UpdateChecked {
-                manual,
-                result: Ok(Some(crate::updates::Release {
-                    version: "1.2.3".into(),
-                    url: "https://github.com/crmne/spotifast/releases/tag/v1.2.3".into(),
-                })),
-            }]);
-            let ctx = egui::Context::default();
-            app.apply_actions(&ctx);
-            assert!(app.update.is_some());
-            assert!(!app.show_update);
-            app.apply(Action::ShowUpdate, &ctx);
-            assert!(app.show_update);
-        }
-    }
-
-    #[test]
-    fn a_manual_update_check_reports_its_result() {
-        let mut app = headless_app();
-        app.update = Some(crate::updates::Release {
-            version: "1.2.3".into(),
-            url: "https://github.com/crmne/spotifast/releases/tag/v1.2.3".into(),
-        });
-        app.update_checking = true;
-        app.handle_backend_events(vec![Event::UpdateChecked {
-            manual: true,
-            result: Ok(None),
-        }]);
-
-        assert!(!app.update_checking);
-        assert_eq!(app.update, None);
-        assert_eq!(
-            app.toasts.last().map(|toast| toast.message.as_str()),
-            Some("Spotifast is up to date")
-        );
-
-        app.toasts.clear();
-        app.update_checking = true;
-        app.handle_backend_events(vec![Event::UpdateChecked {
-            manual: true,
-            result: Err("GitHub is unavailable".into()),
-        }]);
-
-        assert!(!app.update_checking);
-        assert_eq!(
-            app.toasts.last().map(|toast| toast.message.as_str()),
-            Some("Couldn't check for updates: GitHub is unavailable")
-        );
-        assert_eq!(
-            app.toasts.last().map(|toast| &toast.kind),
-            Some(&ToastKind::Error)
-        );
-    }
-
-    #[test]
-    fn the_daily_update_check_only_announces_a_new_release() {
-        let mut app = headless_app();
-        app.update_checking = true;
-        app.handle_backend_events(vec![Event::UpdateChecked {
-            manual: false,
-            result: Ok(None),
-        }]);
-        assert!(
-            app.toasts.is_empty(),
-            "the current release needs no daily toast"
-        );
-
-        app.update_checking = true;
-        app.handle_backend_events(vec![Event::UpdateChecked {
-            manual: false,
-            result: Ok(Some(crate::updates::Release {
-                version: "1.2.3".into(),
-                url: "https://github.com/crmne/spotifast/releases/tag/v1.2.3".into(),
-            })),
-        }]);
-
-        assert_eq!(
-            app.update.as_ref().map(|release| release.version.as_str()),
-            Some("1.2.3")
-        );
-        assert_eq!(
-            app.toasts.last().map(|toast| toast.message.as_str()),
-            Some("Spotifast 1.2.3 is available")
         );
     }
 

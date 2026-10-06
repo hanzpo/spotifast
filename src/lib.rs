@@ -46,7 +46,6 @@ pub mod system_fonts;
 pub mod theme;
 pub mod thumbbar;
 pub mod ui;
-pub mod updates;
 pub mod util;
 pub mod vis;
 pub mod winamp;
