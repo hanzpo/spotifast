@@ -201,7 +201,6 @@ Unmodified letter shortcuts still yield to the focused control.
 
 This is the first part of screen-reader support. Windows testing with NVDA
 remains tracked in [#262](https://github.com/crmne/spotifast/issues/262).
-Winamp skins do not yet have equivalent accessibility coverage.
 
 ## Keyboard shortcuts
 
@@ -223,7 +222,6 @@ Winamp skins do not yet have equivalent accessibility coverage.
 | `Ctrl+A` | Select every song in a playlist, album or Liked Songs |
 | `Ctrl+C` / `Ctrl+V` | Copy the selected songs' links / add copied song links to your playlist |
 | `Ctrl+X` | Copy the selected songs' links and remove the songs from your playlist |
-| `Ctrl+M` | Winamp mini player |
 | `Ctrl+,` | Settings |
 | `Ctrl+/` or `?` | All shortcuts |
 | `Ctrl+Q` | Quit |
@@ -339,27 +337,10 @@ Since 0.8.0, clicking or double-clicking the Windows tray icon shows
 and raises Spotifast. Use **Show or hide Spotifast** in the tray menu to hide
 it again.
 
-Closing to the tray removes the window and its preview. Reopening the main
-window or switching to the Winamp window creates its controls again. Media
+Closing to the tray removes the window and its preview. Reopening the window
+creates its controls again. Media
 keys and the system's now-playing controls continue working while the window
 is closed.
-
-For the Winamp mini player, turn off **Show in taskbar** under
-**Settings > Winamp skins**, or **Show in taskbar** in its options menu.
-The choice survives restarts. The mini player stays visible; the tray icon,
-**Ctrl+M**, the skin logo, and launching Spotifast again remain ways to reach
-the app. Returning to the main window always restores its taskbar button.
-Changing the option while the mini player is open replaces that window while
-playback continues. This setting is available on Windows and in Linux X11
-sessions, where it hides the mini player from panels and task switchers that
-follow the window manager's skip-taskbar state. Wayland has no standard way
-for an app to leave the taskbar, so the option is not offered there; use your
-desktop's window rules instead. It does not change the macOS Dock.
-
-On Windows, since 0.8.0, the mini player starts on the current desktop if its
-saved title bar is outside every connected monitor’s work area. Positions on
-connected secondary monitors still restore. Reinstalling preserves settings;
-it is not needed to recover a position left on an unplugged display.
 
 ## macOS Dock menu
 
@@ -367,15 +348,7 @@ Right-click or Control-click Spotifast's Dock icon for **Play** (or **Pause**
 while music plays), **Next**, and **Previous**, above the standard Dock items.
 They control the same playing device as the player bar.
 
-## Keeping the mini player above other windows
-
-**Always on top** works on Windows, macOS and X11. On Wayland the app's
-controls are unavailable, because your desktop manages which windows stay above
-others.
-Use your desktop's window rule or shortcut instead. In KDE Plasma, configure
-**Keep Window Above Others** under **Settings > Keyboard > Shortcuts >
-Window Management**. Your saved preference remains available when you use
-Spotifast on Windows, macOS, or X11 again.
+## Top bar
 
 Since 0.8.0, the top bar reserves room for the device badge beside
 Search. In narrow windows the badge shows only its icon.

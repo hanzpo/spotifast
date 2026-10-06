@@ -85,7 +85,7 @@ librespot provides:
 Spotify Premium is required. librespot cannot play audio with a free account.
 
 Spotifast uses a small librespot fork. Its patches add queue controls,
-normalisation data for the visualisers, and an event for rejected audio keys.
+normalisation reporting, and an event for rejected audio keys.
 They are listed in `Cargo.toml`. Larger changes go upstream first.
 
 ## Not available

@@ -13,7 +13,6 @@ Spotifast follows each platform's conventions. On Linux:
 | What | Where | Safe to delete? |
 | --- | --- | --- |
 | Settings | `~/.config/spotifast/settings.json` | Yes, you lose preferences |
-| Winamp skins | `~/.config/spotifast/skins/` | Yes, you add them again |
 | Spotify grants (available since 0.8.0) | System credential store | Use Sign out in Settings |
 | Credential revocation markers (available since 0.8.0) | `~/.local/state/spotifast/credential-storage/` | Keep after a failed sign-out deletion |
 | Legacy shared Web API grant | `~/.local/state/spotifast/shared_web_api_token.json` | Removed after migration or sign-out |
@@ -156,21 +155,16 @@ their rows stay in memory until the write and its snapshot are confirmed,
 even if this temporarily exceeds the usual page limit. Track metadata is
 limited to 800 cached tracks; navigation and periodic cleanup trim old entries.
 
-The session remembers separate positions for the main window and the Winamp
-mini player. The shade modes are kept in `settings.json`. Wayland compositors
+The session remembers the window's position. Wayland compositors
 may ignore saved positions. On Windows, a position
 whose title bar is no longer on an available monitor's work area is discarded
 when reopening the window, keeping its initial on-screen placement instead.
 
 Since 0.8.0, a main window left maximized or full
-screen reopens that way, and comes back that way from the mini player. The
+screen reopens that way. The
 remembered size and position describe an ordinary window and are not applied
 to one that already fills the screen, because sizing or moving such a window
 restores it down.
-
-Since 0.9.0, a closing main window keeps its own geometry until
-the native window closes. An extra closing frame cannot resize it to the
-mini player and overwrite its saved size or maximized state.
 
 Since 0.8.0, album and playlist scrollbars reserve the full track count
 as soon as Spotify reports it. Dragging to an unloaded section shows placeholders and requests
@@ -239,24 +233,12 @@ main fields are:
 | `sidebar_grid` | `false` | Library entries as responsive cover cards instead of rows |
 | `tracklist_compact` | `false` | One-line track rows without covers |
 | `middle_click_autoscroll` | `false` | Linux only: middle-click a list to autoscroll it. Windows always autoscrolls and macOS never does |
-| `winamp_window` | `false` | The window is the Winamp mini player |
-| `winamp_show_taskbar` | `true` | Windows since 0.8.0, and Linux X11 sessions: show the Winamp window's taskbar button; the main window always keeps its button. Wayland and macOS ignore it |
 | `custom_titlebar` | `false` | Windows only, since 0.10.0: draw Spotifast's own title bar and window buttons instead of the standard Windows ones |
-| `skin` | none | File or folder name in the skins folder; blank uses the built-in skin |
-| `random_skin` | `false` | Since 0.11.0: pick a different skin (built-in or installed) each time the mini player opens; `skin` holds the one picked |
-| `skin_scale` | by display | Screen pixels per skin pixel, 1 to 4 |
-| `winamp_on_top` | `false` | Keep the mini player above other windows |
-| `vis` | `bars` | The mini player's visualiser: `bars`, `scope`, or `off` |
-| `playlist_open` | `false` | The playlist window is open under the mini player |
-| `playlist_height` | `174` | The playlist window's height in skin pixels |
-| `eq_open` | `false` | The equalizer window is open under the mini player |
 | `eq_on` | `false` | The equalizer shapes local playback |
 | `eq_preamp_db` | `0` | The preamp, in decibels, -12 to 12 |
 | `eq_bands_db` | ten zeros | The bands from 60 Hz to 16 kHz, in decibels, -12 to 12 |
-| `balance` | `0` | Left to right, -1 to 1, for local playback |
-| `mono` | `false` | Play both channels the same |
-| `playlist_shaded` | `false` | The playlist window is rolled up to its title bar |
-| `winamp_shaded` | `false` | The main window is rolled up to its title bar |
+| `balance` | `0` | Left to right, -1 to 1, for local playback; no longer set in the app, a saved value still applies |
+| `mono` | `false` | Play both channels the same; no longer set in the app, a saved value still applies |
 | `keep_playing_in_background` | `true` | Close to tray (Windows and Linux; macOS always quits) |
 | `mac_notch_widget` | `false` | Show interactive Now Playing widget when hovering over the MacBook notch (macOS only) |
 | `web_client_id` | none | Optional personal Spotify app id used alongside shared coverage |
@@ -295,7 +277,7 @@ settings.
 `--demo-page` opens a page, such as `home`, `playlist:pl1`, or `artist:art0`,
 and `--demo-show` adds surfaces on top of it: a comma separated list of
 `queue`, `playing-next`, `devices`, `shortcuts`, `premium`, `create`, `duplicate`, `light`,
-`focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `personal-app`,
+`focus`, `compact`, `personal-app`,
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
 `library-grid-wide`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`,
@@ -380,7 +362,7 @@ Themes change colors and keep the app's existing fonts.
 **How to make a theme**, beside the picker, opens this section. The
 **Open themes folder** icon button beside the picker creates the folder if
 needed and opens it in your file
-manager, using the same button style as the Winamp skins folder.
+manager.
 After adding or editing a JSON file on macOS or Windows, run
 `spotifast reload-themes` to refresh the list and the selected palette without
 restarting playback. Since 0.10.2, Spotifast on Linux notices changes to the
@@ -432,8 +414,7 @@ reset unrelated settings.
 
 A custom palette's `base` controls both its inherited colors and the light or
 dark styling of standard controls. Album-art tinting remains an independent
-setting; turn it off for fixed colors throughout. Palettes apply to the main
-window; Winamp skins remain separate. This first format controls colors only.
+setting; turn it off for fixed colors throughout. This first format controls colors only.
 
 ### Follow an Omarchy theme
 

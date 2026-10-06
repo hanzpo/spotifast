@@ -67,27 +67,6 @@ pub struct HomeSettings {
     pub recommendations: HomeShelfSettings,
 }
 
-/// Mini-player visualizer mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum VisMode {
-    #[default]
-    Bars,
-    Scope,
-    Off,
-}
-
-impl VisMode {
-    /// Next mode in the display's click cycle.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Bars => Self::Scope,
-            Self::Scope => Self::Off,
-            Self::Off => Self::Bars,
-        }
-    }
-}
-
 /// The interface language: the operating system's, or one chosen in Settings.
 ///
 /// Stored as `"system"` or a locale tag such as `"es"` or `"pt-BR"`. A file
@@ -287,31 +266,9 @@ pub struct Settings {
     pub library_sort: std::collections::BTreeMap<LibraryShelf, LibrarySort>,
     /// Interface zoom, egui's zoom factor; Ctrl+plus/minus changes it.
     pub zoom: f32,
-    /// The Winamp window is open.
-    pub winamp_window: bool,
-    /// Windows and X11: keep a taskbar button while the Winamp window is visible.
-    pub winamp_show_taskbar: bool,
     /// Windows: draw Spotifast's own title bar and window buttons instead of
     /// the standard Windows frame.
     pub custom_titlebar: bool,
-    /// Skin file or folder name. `None` selects the built-in skin.
-    pub skin: Option<String>,
-    /// Pick a different skin each time the mini player opens; `skin` holds
-    /// the one picked.
-    pub random_skin: bool,
-    /// Screen pixels per skin pixel; `None` picks double size for the
-    /// display.
-    pub skin_scale: Option<u8>,
-    /// The Winamp window stays above other windows.
-    pub winamp_on_top: bool,
-    /// The mini player's visualiser: bars, scope, or off.
-    pub vis: VisMode,
-    /// The playlist window is open under the mini player.
-    pub playlist_open: bool,
-    /// How tall the playlist window is, in skin pixels.
-    pub playlist_height: u32,
-    /// The equalizer window is open under the mini player.
-    pub eq_open: bool,
     /// The equalizer shapes local playback.
     pub eq_on: bool,
     /// The preamp, in decibels, never above zero.
@@ -322,12 +279,6 @@ pub struct Settings {
     pub balance: f32,
     /// Play both channels the same.
     pub mono: bool,
-    /// The playlist window is rolled up to its title bar.
-    pub playlist_shaded: bool,
-    /// The equalizer window is rolled up to its title bar.
-    pub eq_shaded: bool,
-    /// The main window is rolled up to its title bar.
-    pub winamp_shaded: bool,
     /// Which proxy to use. Older files without this field stay on `system`.
     #[serde(default, skip_serializing_if = "proxy_mode_is_system")]
     pub proxy_mode: ProxyMode,
@@ -412,25 +363,12 @@ impl Default for Settings {
             sidebar_order: Vec::new(),
             library_sort: std::collections::BTreeMap::new(),
             zoom: 1.0,
-            winamp_window: false,
-            winamp_show_taskbar: true,
             custom_titlebar: false,
-            skin: None,
-            random_skin: false,
-            skin_scale: None,
-            winamp_on_top: false,
-            vis: VisMode::default(),
-            playlist_open: false,
-            playlist_height: 174,
-            eq_open: false,
             eq_on: false,
             eq_preamp_db: 0.0,
             eq_bands_db: [0.0; 10],
             balance: 0.0,
             mono: false,
-            playlist_shaded: false,
-            eq_shaded: false,
-            winamp_shaded: false,
             proxy_mode: ProxyMode::System,
             proxy: String::new(),
             proxy_host: String::new(),
@@ -1031,46 +969,12 @@ mod tests {
     }
 
     #[test]
-    fn older_settings_keep_the_winamp_window_closed_and_the_built_in_skin() {
+    fn older_settings_leave_the_equalizer_flat() {
         let settings: Settings = serde_json::from_str(r#"{"zoom": 1.2}"#).unwrap();
-        assert!(!settings.winamp_window);
-        assert!(settings.winamp_show_taskbar);
-        assert_eq!(settings.skin, None);
-        assert_eq!(settings.skin_scale, None);
-        assert!(!settings.winamp_on_top);
-        assert_eq!(settings.vis, super::VisMode::Bars);
-        assert!(!settings.playlist_open);
-        assert_eq!(settings.playlist_height, 174);
         assert!(!settings.eq_on);
         assert_eq!(settings.eq_bands_db, [0.0; 10]);
         assert_eq!(settings.balance, 0.0);
         assert!(!settings.mono);
-        assert!(!settings.playlist_shaded);
-        assert!(!settings.eq_shaded);
-        assert!(!settings.winamp_shaded);
-    }
-
-    #[test]
-    fn the_visualiser_cycles_bars_scope_off() {
-        use super::VisMode;
-        assert_eq!(VisMode::Bars.next(), VisMode::Scope);
-        assert_eq!(VisMode::Scope.next(), VisMode::Off);
-        assert_eq!(VisMode::Off.next(), VisMode::Bars);
-        let settings: Settings = serde_json::from_str(r#"{"vis": "scope"}"#).unwrap();
-        assert_eq!(settings.vis, VisMode::Scope);
-    }
-
-    #[test]
-    fn a_chosen_skin_round_trips() {
-        let settings = Settings {
-            winamp_window: true,
-            skin: Some("Zaxon.wsz".into()),
-            skin_scale: Some(3),
-            ..Settings::default()
-        };
-        let json = serde_json::to_string(&settings).unwrap();
-        let restored: Settings = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, settings);
     }
 
     #[test]
@@ -1159,10 +1063,14 @@ mod tests {
     }
 
     #[test]
-    fn older_settings_keep_the_chosen_skin() {
-        let settings: Settings = serde_json::from_str(r#"{"skin":"A.wsz"}"#).unwrap();
-        assert!(!settings.random_skin);
-        assert_eq!(settings.skin.as_deref(), Some("A.wsz"));
+    fn settings_from_before_winamp_was_removed_still_load() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"skin":"Zaxon.wsz","winamp_window":true,"winamp_show_taskbar":false,"random_skin":true,"skin_scale":3,"winamp_on_top":true,"vis":"scope","playlist_open":true,"playlist_height":232,"eq_open":true,"playlist_shaded":true,"eq_shaded":true,"winamp_shaded":true,"eq_on":true,"eq_bands_db":[1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0],"tracklist_compact":true}"#,
+        )
+        .unwrap();
+        assert!(settings.tracklist_compact);
+        assert!(settings.eq_on);
+        assert_eq!(settings.eq_bands_db[9], 10.0);
     }
 
     #[test]
@@ -1480,8 +1388,6 @@ pub struct SessionState {
     pub queue_open: Option<bool>,
     /// Which tab the queue panel showed: `queue` or `recents`.
     pub queue_tab: Option<String>,
-    /// Last outer position of the Winamp window.
-    pub winamp_pos: Option<[f32; 2]>,
     /// The window mode fullscreen lyrics left, when the app closed while
     /// showing them. eframe restores the window full screen, so the next
     /// start returns it to this mode instead.
@@ -1535,6 +1441,13 @@ mod session_tests {
         let state: SessionState = serde_json::from_str(r#"{"last_page":"home"}"#).unwrap();
         assert_eq!(state.last_page.as_deref(), Some("home"));
         assert_eq!(state.rootlist, None);
+    }
+
+    #[test]
+    fn sessions_from_before_winamp_was_removed_still_load() {
+        let state: SessionState =
+            serde_json::from_str(r#"{"last_page":"home","winamp_pos":[300.0,200.0]}"#).unwrap();
+        assert_eq!(state.last_page.as_deref(), Some("home"));
     }
 
     #[test]

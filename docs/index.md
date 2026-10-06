@@ -36,11 +36,6 @@ features:
   - icon: 🎨
     title: Themes
     details: Choose light, dark, or your own colours. On Omarchy, Spotifast can follow your desktop theme as it changes, while the music keeps playing.
-  - icon: 📻
-    title: Winamp mini player
-    details: Bring back the classic Winamp look, with skins, a playlist, sound controls, and animations that move to your music.
-    link: /winamp/
-    link_text: See it in action
   - icon: ⌨️
     title: Desktop controls
     details: Use keyboard shortcuts and your keyboard's media keys. Keep the music playing after you close the window.
@@ -77,18 +72,6 @@ features:
   }
 </style>
 
-## It turns into Winamp
-
-Load a classic `.wsz` skin from the
-[Winamp Skin Museum](https://skins.webamp.org). The mini player includes
-animated sound displays, an equalizer to adjust your sound, and a playlist.
-Roll it up into a thin bar or enlarge it while keeping the classic pixels
-sharp. [See the mini player in detail](/winamp/).
-
-<div class="winamp-showcase">
-  <img src="/assets/images/winamp.png" alt="The mini player wearing the built-in skin" width="550" height="812">
-</div>
-
 ## WhatsApp, just as fast
 
 **Want WhatsApp just as fast and native?** [ZapFast](https://zapfast.rocks) is
@@ -115,15 +98,6 @@ foundation for native Rust apps built with egui.
     padding: 0 !important;
     border-radius: 12px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
-  }
-  .winamp-showcase {
-    text-align: center;
-  }
-  .winamp-showcase img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 12px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
   }
   @media (max-width: 959px) {
     .VPHero .image {

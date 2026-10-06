@@ -684,8 +684,6 @@ fn play_here(app: &mut App) {
 
 #[cfg(feature = "demo")]
 pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
-    // Default screenshots to the main window regardless of saved settings.
-    app.settings.winamp_window = false;
     if let Some(page) = page.and_then(Page::decode) {
         app.open(page);
     }
@@ -918,23 +916,6 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 app.resume_position_ms = 19_566;
                 app.actions.push(Action::Next);
             }
-            // Use the built-in skin for deterministic screenshots.
-            "winamp" => {
-                app.settings.winamp_window = true;
-                app.settings.skin = None;
-                // Two screen pixels per skin pixel, whatever the display, so
-                // captures match the pages that show them.
-                app.settings.skin_scale = Some(2);
-            }
-            "playlist" => app.settings.playlist_open = true,
-            "shade" => app.settings.winamp_shaded = true,
-            "playlist-shade" => app.settings.playlist_shaded = true,
-            "eq" => {
-                app.settings.eq_open = true;
-                app.settings.eq_on = true;
-                app.settings.eq_bands_db = crate::eq::PRESETS[13].bands_db;
-            }
-            "presets" => app.winamp.open_presets = true,
             "art" => app.settings.art_expanded = true,
             "folders" => {
                 use crate::player::RootlistEntry;
@@ -958,15 +939,10 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 ];
                 app.collapsed_folders = vec!["f2".into()];
             }
-            "small" => app.settings.skin_scale = Some(1),
             "windows-taskbar" => app.demo_windows_controls = true,
             "compact" => {
                 app.settings.sidebar_compact = true;
                 app.settings.tracklist_compact = true;
-            }
-            "eq-shade" => {
-                app.settings.eq_open = true;
-                app.settings.eq_shaded = true;
             }
             "pins" => {
                 app.settings.pinned_contexts =
@@ -2944,18 +2920,15 @@ mod tests {
     #[test]
     fn settings_search_never_shows_a_section_for_an_unavailable_row() {
         let (ctx, mut app) = accessible_app("settings-search-availability");
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert_eq!(
-            text.iter().any(|text| text == "Winamp skins"),
-            cfg!(windows)
-        );
+        let text = settings_text(&ctx, &mut app, "Custom title bar");
+        assert_eq!(text.iter().any(|text| text == "Appearance"), cfg!(windows));
         if !cfg!(windows) {
             assert!(text.iter().any(|text| text.starts_with("No settings for")));
         }
         app.demo_windows_controls = true;
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert!(text.iter().any(|text| text == "Winamp skins"));
-        assert!(text.iter().any(|text| text == "Show in taskbar"));
+        let text = settings_text(&ctx, &mut app, "Custom title bar");
+        assert!(text.iter().any(|text| text == "Appearance"));
+        assert!(text.iter().any(|text| text == "Custom title bar"));
 
         app.settings.web_client_id = None;
         app.web_app = None;
@@ -3420,45 +3393,6 @@ mod tests {
         app.backend.shutdown();
     }
 
-    #[test]
-    fn the_windows_taskbar_setting_keeps_its_choice_without_closing_settings() {
-        use egui::accesskit::Role;
-        let (ctx, mut app) = accessible_app("winamp-taskbar-setting");
-        app.open(Page::Settings);
-        accessible_frame(&ctx, &mut app, vec![]);
-        let tree = accessible_frame(&ctx, &mut app, vec![]);
-        if !cfg!(windows) {
-            assert!(
-                !tree
-                    .nodes
-                    .iter()
-                    .any(|(_, node)| node.label() == Some("Show Winamp in taskbar"))
-            );
-        }
-        app.demo_windows_controls = true;
-        for _ in 0..4 {
-            accessible_frame(&ctx, &mut app, vec![]);
-        }
-        let tree = accessible_frame(&ctx, &mut app, vec![]);
-        let control = accessible_node(&tree, "Show Winamp in taskbar", Role::CheckBox);
-        accessible_frame(
-            &ctx,
-            &mut app,
-            vec![accessible_action(
-                control,
-                egui::accesskit::Action::Click,
-                None,
-            )],
-        );
-        assert!(!app.settings.winamp_show_taskbar);
-        assert!(!app.settings.winamp_window && !app.switch_intent);
-        let path = app.dirs.config.join("winamp-taskbar-choice.json");
-        app.settings.save(&path);
-        app.settings = Settings::load(&path);
-        assert!(!app.settings.winamp_show_taskbar);
-        app.backend.shutdown();
-    }
-
     /// Linux offers middle-click autoscroll as a switch that starts off and
     /// is saved; Windows always autoscrolls and macOS never does, so neither
     /// shows the row.
@@ -3501,50 +3435,6 @@ mod tests {
         app.settings.save(&path);
         app.settings = Settings::load(&path);
         assert!(app.settings.middle_click_autoscroll);
-        app.backend.shutdown();
-    }
-
-    /// X11 can hide the mini player's taskbar entry, so it gets the same row
-    /// and menu item as Windows; Wayland and macOS never show them.
-    #[test]
-    fn the_taskbar_setting_follows_the_window_backend() {
-        let (ctx, mut app) = accessible_app("x11-taskbar-setting");
-        app.taskbar_hiding_supported = true;
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert!(text.iter().any(|text| text == "Winamp skins"));
-        assert!(text.iter().any(|text| text == "Show in taskbar"));
-
-        app.taskbar_hiding_supported = false;
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert_eq!(
-            text.iter().any(|text| text == "Winamp skins"),
-            cfg!(windows)
-        );
-        app.backend.shutdown();
-    }
-
-    #[test]
-    fn wayland_on_top_setting_is_disabled_and_does_not_look_active() {
-        use egui::accesskit::{Role, Toggled};
-        let (ctx, mut app) = accessible_app("wayland-on-top");
-        app.window_level_supported = false;
-        app.settings.winamp_on_top = true;
-        app.open(Page::Settings);
-        accessible_frame(&ctx, &mut app, vec![]);
-        let tree = accessible_frame(&ctx, &mut app, vec![]);
-        let id = accessible_node(&tree, "Always on top", Role::CheckBox);
-        let node = &tree
-            .nodes
-            .iter()
-            .find(|(node_id, _)| *node_id == id)
-            .unwrap()
-            .1;
-        assert!(node.is_disabled());
-        assert_eq!(node.toggled(), Some(Toggled::False));
-        assert!(
-            app.settings.winamp_on_top,
-            "the saved preference is preserved"
-        );
         app.backend.shutdown();
     }
 

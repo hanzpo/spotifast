@@ -253,9 +253,9 @@ pub struct App {
     pub hide_intent: bool,
     /// The outer loop should recreate the hidden window.
     pub wants_show: bool,
-    /// The window should close and reopen at once as the other kind: the
-    /// big window or the Winamp mini player.
-    pub switch_intent: bool,
+    /// The window should close and reopen at once: Windows fixes a window's
+    /// decorations when it is created.
+    pub reopen_intent: bool,
     /// Commands from control clients (a second `spotifast <verb>` launch,
     /// a Raycast script, a link the desktop opens). Drained every frame.
     control_commands: Option<std::sync::Arc<std::sync::Mutex<Vec<ControlCommand>>>>,
@@ -274,11 +274,6 @@ pub struct App {
     /// The language the interface is drawn in: [`Settings::language`]
     /// resolved against the operating system's preferred languages.
     pub locale: crate::i18n::Locale,
-    /// Whether this window's native backend can keep it above other windows.
-    pub window_level_supported: bool,
-    /// Whether this window's native backend can leave the mini player out of
-    /// the taskbar: Windows and X11.
-    pub taskbar_hiding_supported: bool,
     #[cfg(any(test, feature = "demo"))]
     pub demo_windows_controls: bool,
     applied_dark: Option<bool>,
@@ -309,11 +304,6 @@ pub struct App {
     last_session_save: Instant,
     /// The saved zoom has been applied to the context once.
     zoom_applied: bool,
-    /// Frames left to re-send the Winamp window's always-on-top level after the
-    /// window opens. X11 window managers drop `_NET_WM_STATE_ABOVE` set before
-    /// the window is mapped, so the creation-time level does not stick; a level
-    /// pushed on the first frames after mapping does.
-    winamp_level_reassert: u8,
     pub devices: Vec<Device>,
     /// Receivers seen on the local network. Spotify lists a receiver only
     /// once it has an account, so these are the ones it cannot see yet.
@@ -545,8 +535,8 @@ pub struct App {
     pending_pastes: Vec<PendingPaste>,
     /// Sidebar folders rolled up, by their rootlist ids.
     pub collapsed_folders: Vec<String>,
-    /// Winamp window state and active skin.
-    pub winamp: crate::winamp::WinampState,
+    /// The equalizer's settings, shared with the player.
+    eq: crate::eq::SharedEq,
 }
 
 /// How many plays the Home shelf asks for: it shows sixteen cards.
@@ -575,13 +565,12 @@ const TRAY_QUIT: &str = "quit";
 /// What the shell around `eframe::run_native` does with the app between
 /// windows.
 impl fastframe_shell::Resident for App {
-    /// Quit wins; switching between the main window and the mini player
-    /// opens the other at once; closing to the tray runs without a window.
+    /// Quit wins; closing to the tray runs without a window.
     fn closed(&self) -> fastframe_shell::Closed {
         use fastframe_shell::Closed;
         if self.quit_requested {
             Closed::Quit
-        } else if self.switch_intent {
+        } else if self.reopen_intent {
             Closed::Reopen
         } else if self.hide_intent {
             Closed::Hide
@@ -646,7 +635,6 @@ impl App {
         // settings beside it until migration binds that password in the store.
         settings.proxy_password_legacy |= dirs.proxy_secret_file().try_exists().unwrap_or(true);
         let plays = crate::history::History::load(&dirs.history_file());
-        let tap = crate::vis::AudioTap::new();
         let eq = crate::eq::shared();
         if let Ok(mut shared) = eq.lock() {
             *shared = eq_settings(&settings);
@@ -660,7 +648,6 @@ impl App {
             &dirs,
             &settings,
             applied_proxy.clone(),
-            std::sync::Arc::clone(&tap),
             std::sync::Arc::clone(&eq),
         );
         let backend = Backend::spawn(
@@ -739,7 +726,7 @@ impl App {
             window_hidden: false,
             hide_intent: false,
             wants_show: false,
-            switch_intent: false,
+            reopen_intent: false,
             control_commands: None,
             control_now_playing: None,
             control_devices: None,
@@ -747,8 +734,6 @@ impl App {
             offline: false,
             palette,
             locale,
-            window_level_supported: true,
-            taskbar_hiding_supported: cfg!(windows),
             #[cfg(any(test, feature = "demo"))]
             demo_windows_controls: false,
             applied_dark: None,
@@ -768,7 +753,6 @@ impl App {
             session_dirty: false,
             last_session_save: Instant::now(),
             zoom_applied: false,
-            winamp_level_reassert: 0,
             devices: Vec::new(),
             receivers: Vec::new(),
             activating_receiver: None,
@@ -917,7 +901,7 @@ impl App {
             copied_songs: Vec::new(),
             pending_pastes: Vec::new(),
             collapsed_folders: session.collapsed_folders.clone(),
-            winamp: crate::winamp::WinampState::new(session.winamp_pos, tap, eq),
+            eq,
         };
         app.local.volume = app.settings.volume;
         // What was played here is on disk and needs nothing from the
@@ -941,12 +925,10 @@ impl App {
         ctx.add_bytes_loader(std::sync::Arc::new(self.backend.art().clone()));
         ctx.set_theme(self.theme_preference());
         self.applied_dark = None;
-        self.winamp.forget_textures();
         self.window_hidden = false;
         self.hide_intent = false;
         self.wants_show = false;
-        self.switch_intent = false;
-        self.winamp_level_reassert = 0;
+        self.reopen_intent = false;
         // A new window starts titled "Spotifast"; name the playing song
         // again rather than trust what the replaced window was told.
         self.window_title.clear();
@@ -959,27 +941,6 @@ impl App {
         // the frameless main window full screen and nothing else could
         // leave it, it was an ordinary window.
         let lyrics_left = self.session_lyrics_fullscreen_from.take();
-        if self.settings.winamp_window {
-            // The mini player sizes itself; the big window's geometry
-            // waits here for its return. eframe may have restored the big
-            // window's fullscreen/maximized state before creating this one.
-            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-            if let Some(pos) = self.winamp.restore_pos
-                && crate::window::can_restore(pos, ctx.pixels_per_point())
-            {
-                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                    pos[0], pos[1],
-                )));
-            }
-            // Re-assert the on-top level over the
-            // first frames, once the window is mapped, because the level set
-            // at creation does not stick on X11.
-            if self.settings.winamp_on_top && self.window_level_supported {
-                self.winamp_level_reassert = 3;
-            }
-            return;
-        }
         let restored_full_screen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
         let lyrics_left = lyrics_left.or_else(|| {
             (cfg!(windows) && restored_full_screen).then(crate::settings::WindowMode::default)
@@ -1025,9 +986,6 @@ impl App {
     /// The window is gone but the process stays: audio, the tray, and the
     /// media controls keep running until Show or Quit.
     pub fn window_gone(&mut self) {
-        // The Winamp window went with it; it comes back where it was.
-        self.winamp.remember_position();
-        self.winamp.forget_textures();
         self.window_hidden = true;
         self.hide_intent = false;
         self.wants_show = false;
@@ -2559,10 +2517,7 @@ impl App {
         if let Some(url) = now.art_small.or(now.art_url) {
             self.tint_for(Some(&url));
         }
-        if matches!(self.page(), Page::Queue)
-            || self.show_queue_panel
-            || (self.settings.winamp_window && self.settings.playlist_open)
-        {
+        if matches!(self.page(), Page::Queue) || self.show_queue_panel {
             self.refresh_queue(true);
         }
         if self.show_lyrics_panel {
@@ -2604,28 +2559,9 @@ impl App {
         })));
     }
 
-    /// Pushes the Winamp window's always-on-top level to the live window.
-    fn push_winamp_level(&self, ctx: &egui::Context) {
-        if self.window_level_supported
-            && let Some(level) =
-                winamp_on_top_level(self.settings.winamp_window, self.settings.winamp_on_top)
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
-        }
-    }
-
     fn tick(&mut self, ctx: &egui::Context) {
         self.poll_custom_themes(ctx);
         let now = Instant::now();
-        if self.winamp_level_reassert > 0 {
-            self.winamp_level_reassert -= 1;
-            self.push_winamp_level(ctx);
-            // The window can be idle right after opening, so drive the next
-            // frame to make sure the re-assert actually runs.
-            if self.winamp_level_reassert > 0 {
-                ctx.request_repaint();
-            }
-        }
         if !self.zoom_applied {
             self.zoom_applied = true;
             let zoom = self.settings.zoom.clamp(0.5, 2.5);
@@ -2670,8 +2606,7 @@ impl App {
             {
                 self.refresh_devices();
             }
-            let playlist_open = self.settings.winamp_window && self.settings.playlist_open;
-            if (self.show_queue_panel || matches!(self.page(), Page::Queue) || playlist_open)
+            if (self.show_queue_panel || matches!(self.page(), Page::Queue))
                 && !self.queue.is_loading()
                 && self
                     .queue_fetched_at
@@ -2717,7 +2652,6 @@ impl App {
             self.backend.art().evict(ctx);
             self.evict_stale_pages();
         }
-        self.sync_skin(ctx);
         if self.settings_dirty && self.last_settings_save.elapsed() > Duration::from_secs(2) {
             self.save_settings();
         }
@@ -2726,66 +2660,9 @@ impl App {
         }
     }
 
-    /// Loads and applies the skin selected in settings.
-    /// On failure, restores the active skin setting to avoid repeated retries.
-    fn sync_skin(&mut self, ctx: &egui::Context) {
-        if self.settings.winamp_window
-            && !self.winamp.is_loading()
-            && self.winamp.worn != self.settings.skin
-        {
-            match self.settings.skin.clone() {
-                None => self.winamp.wear(None, crate::skin::Skin::builtin()),
-                Some(name) => self.winamp.load(name, &self.dirs.skins_dir(), ctx),
-            }
-        }
-        if let Some(loaded) = self.winamp.poll() {
-            self.skin_loaded(loaded);
-        }
-    }
-
-    /// Creates a config folder if needed and opens it in the file manager.
-    fn open_folder(&mut self, folder: std::path::PathBuf) {
-        let opened = std::fs::create_dir_all(&folder).and_then(|()| crate::opener::open(&folder));
-        if let Err(error) = opened {
-            self.toast_error(
-                // Translators: {folder} is a folder path and {error} is an error message.
-                gettext(self.locale, "Couldn't open {folder}: {error}")
-                    .replace("{folder}", &folder.display().to_string())
-                    .replace("{error}", &error.to_string()),
-            );
-        }
-    }
-
-    /// Applies a loaded skin. Installed files become the selected skin.
-    fn skin_loaded(&mut self, loaded: crate::winamp::Loaded) {
-        match loaded.result {
-            Ok(skin) => {
-                self.winamp
-                    .wear(Some(loaded.name.clone()), std::sync::Arc::new(skin));
-                if loaded.installed {
-                    self.toast(
-                        // Translators: {skin} is the name of a Winamp skin.
-                        gettext(self.locale, "Added {skin} skin")
-                            .replace("{skin}", crate::winamp::label(&loaded.name)),
-                    );
-                    self.winamp.list_choices(&self.dirs.skins_dir());
-                    self.settings.skin = Some(loaded.name);
-                    self.settings_dirty = true;
-                }
-            }
-            Err(error) => {
-                self.toast_error(format!("{}: {error}", crate::winamp::label(&loaded.name)));
-                if !loaded.installed {
-                    self.settings.skin = self.winamp.worn.clone();
-                    self.settings_dirty = true;
-                }
-            }
-        }
-    }
-
     /// Sends equalizer settings to the player and marks them for saving.
     fn push_eq(&mut self) {
-        if let Ok(mut shared) = self.winamp.eq.lock() {
+        if let Ok(mut shared) = self.eq.lock() {
             *shared = eq_settings(&self.settings);
         }
         self.settings_dirty = true;
@@ -2996,12 +2873,8 @@ impl App {
             }
         });
         if self.applied_dark != Some(dark) || self.palette != palette {
-            // The first colours need no reveal, and the mini player's window
-            // is drawn by its skin.
-            if self.reveal_theme_changes
-                && self.applied_dark.is_some()
-                && !self.settings.winamp_window
-            {
+            // The first colours need no reveal.
+            if self.reveal_theme_changes && self.applied_dark.is_some() {
                 self.theme_transition.begin(ctx);
                 if self.theme_transition.holding(ctx) {
                     return;
@@ -3203,11 +3076,6 @@ impl App {
         {
             cfg!(windows)
         }
-    }
-
-    /// Whether to offer hiding the mini player's taskbar entry.
-    pub fn taskbar_setting_visible(&self) -> bool {
-        self.taskbar_hiding_supported || self.windows_controls_visible()
     }
 
     fn sync_media_controls(&mut self, ctx: &egui::Context) {
@@ -7986,7 +7854,6 @@ impl App {
                 | Action::Back
                 | Action::Forward
                 | Action::SignOut
-                | Action::ToggleWinampWindow
                 | Action::ToggleQueuePanel
         ) {
             self.leave_lyrics_fullscreen(ctx);
@@ -8837,8 +8704,7 @@ impl App {
                     &self.dirs,
                     &self.settings,
                     self.applied_proxy.clone(),
-                    std::sync::Arc::clone(&self.winamp.tap),
-                    std::sync::Arc::clone(&self.winamp.eq),
+                    std::sync::Arc::clone(&self.eq),
                 );
                 self.backend.send(Command::RestartEngine(config));
                 if self.local_ready {
@@ -8925,101 +8791,16 @@ impl App {
                         .replace("{error}", &error.to_string()),
                 ),
             },
-            Action::ToggleWinampWindow => {
-                // One window at a time: this one closes and the loop in
-                // `main` opens the other kind where each was last.
-                if self.settings.winamp_window {
-                    self.winamp.remember_position();
-                } else if self.settings.random_skin {
-                    self.winamp.refresh_choices(&self.dirs.skins_dir());
-                    let candidates: Vec<Option<String>> = std::iter::once(None)
-                        .chain(
-                            self.winamp
-                                .choices
-                                .iter()
-                                .map(|choice| Some(choice.name.clone())),
-                        )
-                        .collect();
-                    self.settings.skin = crate::winamp::pick_another(
-                        &candidates,
-                        &self.settings.skin,
-                        &mut rand::rng(),
-                    );
-                }
-                self.session_window_size = self.last_window_size.or(self.session_window_size);
-                self.session_window_pos = self.last_window_pos.or(self.session_window_pos);
-                self.settings.winamp_window = !self.settings.winamp_window;
-                self.settings_dirty = true;
-                self.switch_intent = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-            Action::SetSkin(name) => {
-                self.settings.skin = name;
-                self.settings.random_skin = false;
-                self.settings_dirty = true;
-            }
-            Action::SetRandomSkin(random) => {
-                self.settings.random_skin = random;
-                self.settings_dirty = true;
-            }
-            Action::InstallSkin(path) => {
-                self.winamp.install(path, &self.dirs.skins_dir(), ctx);
-            }
-            Action::SetSkinScale(scale) => {
-                self.settings.skin_scale = Some(scale);
-                self.settings_dirty = true;
-            }
-            Action::ToggleWinampOnTop => {
-                if self.window_level_supported {
-                    self.settings.winamp_on_top = !self.settings.winamp_on_top;
-                    self.settings_dirty = true;
-                    self.push_winamp_level(ctx);
-                }
-            }
             Action::SetCustomTitlebar(custom) => {
                 if self.settings.custom_titlebar != custom {
                     self.settings.custom_titlebar = custom;
                     crate::window::set_custom_titlebar(custom);
                     self.mark_settings_dirty();
-                    if !self.settings.winamp_window {
-                        // Decorations are fixed at creation. Replace only the
-                        // native window, keeping the page and playback.
-                        self.switch_intent = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
+                    // Decorations are fixed at creation. Replace only the
+                    // native window, keeping the page and playback.
+                    self.reopen_intent = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
-            }
-            Action::SetWinampTaskbar(visible) => {
-                if self.settings.winamp_show_taskbar != visible {
-                    self.settings.winamp_show_taskbar = visible;
-                    self.mark_settings_dirty();
-                    if self.settings.winamp_window {
-                        // This window attribute is fixed at creation. Keep
-                        // the visible mini player, its position, and playback
-                        // while replacing only its native window.
-                        self.winamp.remember_position();
-                        self.switch_intent = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                }
-            }
-            Action::ToggleWinampPlaylist => {
-                self.settings.playlist_open = !self.settings.playlist_open;
-                self.settings_dirty = true;
-                if self.settings.playlist_open {
-                    self.refresh_queue(false);
-                }
-            }
-            Action::SetPlaylistHeight(height) => {
-                self.settings.playlist_height = height.clamp(
-                    crate::skin::layout::PLAYLIST_MIN_HEIGHT,
-                    crate::skin::layout::PLAYLIST_MAX_HEIGHT,
-                );
-                self.settings_dirty = true;
-            }
-            Action::ToggleWinampEq => {
-                self.settings.eq_open = !self.settings.eq_open;
-                self.settings_dirty = true;
             }
             Action::ToggleEq => {
                 self.settings.eq_on = !self.settings.eq_on;
@@ -9043,42 +8824,9 @@ impl App {
                     self.push_eq();
                 }
             }
-            Action::SetBalance(balance) => {
-                self.settings.balance = balance.clamp(-1.0, 1.0);
-                self.push_eq();
-            }
-            Action::ToggleMono => {
-                self.settings.mono = !self.settings.mono;
-                self.push_eq();
-            }
-            Action::ToggleWinampShade => {
-                self.settings.winamp_shaded = !self.settings.winamp_shaded;
-                self.settings_dirty = true;
-            }
-            Action::ToggleWinampPlaylistShade => {
-                self.settings.playlist_shaded = !self.settings.playlist_shaded;
-                self.settings_dirty = true;
-            }
-            Action::ToggleWinampEqShade => {
-                self.settings.eq_shaded = !self.settings.eq_shaded;
-                self.settings_dirty = true;
-            }
             // The same request the window's own close button makes, so the
             // close-to-tray setting decides what follows.
             Action::CloseWindow => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-            Action::CycleVisualiser => {
-                self.settings.vis = self.settings.vis.next();
-                self.settings_dirty = true;
-                self.winamp.analyser.reset();
-            }
-            Action::SetVisualiser(mode) => {
-                if self.settings.vis != mode {
-                    self.settings.vis = mode;
-                    self.settings_dirty = true;
-                    self.winamp.analyser.reset();
-                }
-            }
-            Action::OpenSkinsFolder => self.open_folder(self.dirs.skins_dir()),
             Action::Quit => {
                 self.quit_requested = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -9437,9 +9185,9 @@ impl App {
     pub fn frame_ui(&mut self, ui: &mut egui::Ui) {
         // The native close can take another frame. Settings already describe
         // the replacement window, but drawing it here would resize this one
-        // before eframe saves its geometry. attach clears the switch intent
+        // before eframe saves its geometry. attach clears the reopen intent
         // only once the replacement exists.
-        if self.switch_intent {
+        if self.reopen_intent {
             return;
         }
         let ctx = ui.ctx().clone();
@@ -9469,18 +9217,7 @@ impl App {
                 self.leave_lyrics_fullscreen(ctx);
             }
         }
-        // Switch to the main window when sign-in is required.
-        let needs_sign_in = !(self.is_connected() && self.user.is_some())
-            && !matches!(self.auth, AuthStatus::Connecting | AuthStatus::Starting)
-            && !(self.is_connected() && self.user.is_none());
-        if self.settings.winamp_window && needs_sign_in && !self.switch_intent {
-            self.actions.push(Action::ToggleWinampWindow);
-        }
-        if self.settings.winamp_window {
-            crate::ui::winamp::show(self, ui);
-        } else {
-            crate::ui::show(self, ui);
-        }
+        crate::ui::show(self, ui);
         self.apply_actions(ctx);
         let autoscroll = self.autoscroll.finish(
             ctx,
@@ -9492,14 +9229,10 @@ impl App {
         if autoscroll.stop_following_lyrics {
             self.lyrics_following = false;
         }
-        if let Some(offset) = autoscroll.playlist_scroll {
-            self.winamp.playlist_scroll = offset;
-        }
         self.refresh_frame_now();
         self.sync_media_controls(ctx);
 
-        if !self.settings.winamp_window
-            && !self.switch_intent
+        if !self.reopen_intent
             && self.lyrics_fullscreen.is_none()
             && self.lyrics_fullscreen_restoring.is_none()
         {
@@ -9516,7 +9249,7 @@ impl App {
         }
         if ctx.input(|input| input.viewport().close_requested())
             && !self.quit_requested
-            && !self.switch_intent
+            && !self.reopen_intent
             && self.hides_to_tray()
         {
             // Close the window and keep the process running in the tray.
@@ -9584,7 +9317,6 @@ impl App {
                 window_pos: self.last_window_pos.or(self.session_window_pos),
                 queue_open: Some(self.show_queue_panel),
                 queue_tab: Some(self.queue_tab.encode().to_string()),
-                winamp_pos: self.winamp.last_pos.or(self.winamp.restore_pos),
                 lyrics_fullscreen_from: self.lyrics_fullscreen.map(|fullscreen| {
                     crate::settings::WindowMode {
                         fullscreen,
@@ -9780,11 +9512,9 @@ pub fn engine_config(
     dirs: &AppDirs,
     settings: &Settings,
     proxy: crate::settings::ProxyConfig,
-    tap: std::sync::Arc<crate::vis::AudioTap>,
     eq: crate::eq::SharedEq,
 ) -> EngineConfig {
     EngineConfig {
-        tap,
         eq,
         device_name: settings.device_name.trim().to_string(),
         bitrate_kbps: settings.bitrate,
@@ -9823,24 +9553,6 @@ pub fn volume_to_percent(volume: u16) -> u8 {
 
 pub fn percent_to_volume(percent: u8) -> u16 {
     ((u32::from(percent.min(100)) * u32::from(u16::MAX)) / 100) as u16
-}
-
-/// The window level for the Winamp window's always-on-top setting. Shared by
-/// window creation and the live window, so the mapping is owned in one place.
-pub fn on_top_window_level(on_top: bool) -> egui::WindowLevel {
-    if on_top {
-        egui::WindowLevel::AlwaysOnTop
-    } else {
-        egui::WindowLevel::Normal
-    }
-}
-
-/// The window level to push to the live window, or `None` when there is no
-/// Winamp window to change. The big window (where Settings lives) keeps its
-/// normal level, so toggling the setting there only takes effect once the
-/// Winamp window opens.
-fn winamp_on_top_level(winamp_window: bool, on_top: bool) -> Option<egui::WindowLevel> {
-    winamp_window.then_some(on_top_window_level(on_top))
 }
 
 fn page_related_needs_load(pages: &HashMap<String, ArtistPage>, id: &str) -> bool {
@@ -10307,27 +10019,20 @@ mod tests {
     }
 
     #[test]
-    fn autoscroll_updates_the_real_lyrics_and_skinned_playlist_without_changing_playback() {
-        for (skinned, chosen) in [(false, false), (true, false), (false, true), (true, true)] {
+    fn autoscroll_updates_the_real_lyrics_without_changing_playback() {
+        for chosen in [false, true] {
             let on = crate::autoscroll::enabled(chosen);
             let ctx = egui::Context::default();
-            let mut app = test_app(match (skinned, chosen) {
-                (false, false) => "autoscroll-lyrics",
-                (true, false) => "autoscroll-skin",
-                (false, true) => "autoscroll-lyrics-chosen",
-                (true, true) => "autoscroll-skin-chosen",
+            let mut app = test_app(if chosen {
+                "autoscroll-lyrics-chosen"
+            } else {
+                "autoscroll-lyrics"
             });
             app.attach(&ctx);
             crate::demo::populate(&mut app);
             app.settings.middle_click_autoscroll = chosen;
             app.show_queue_panel = false;
-            app.show_lyrics_panel = !skinned;
-            app.settings.winamp_window = skinned;
-            app.settings.playlist_open = skinned;
-            app.settings.skin_scale = Some(2);
-            if let Loadable::Loaded(queue) = &mut app.queue {
-                queue.queue = queue.queue.iter().cycle().take(80).cloned().collect();
-            }
+            app.show_lyrics_panel = true;
             app.lyrics = Loadable::Loaded(Some(crate::lyrics::Lyrics {
                 lines: (0..80)
                     .map(|i| crate::lyrics::Line {
@@ -10350,11 +10055,7 @@ mod tests {
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,
-                            if skinned {
-                                egui::vec2(550.0, 580.0)
-                            } else {
-                                egui::vec2(1280.0, 800.0)
-                            },
+                            egui::vec2(1280.0, 800.0),
                         )),
                         time: Some(frame as f64 / 60.0),
                         events,
@@ -10366,14 +10067,7 @@ mod tests {
             };
             draw(&mut app, vec![]);
             draw(&mut app, vec![]);
-            let anchor = if skinned {
-                ctx.read_response(egui::Id::new(("playlist-row", 0_usize)))
-                    .unwrap()
-                    .rect
-                    .center()
-            } else {
-                egui::pos2(1120.0, 100.0)
-            };
+            let anchor = egui::pos2(1120.0, 100.0);
             let press = |button, pressed| egui::Event::PointerButton {
                 pos: anchor,
                 button,
@@ -10387,14 +10081,8 @@ mod tests {
                     press(egui::PointerButton::Middle, true),
                 ],
             );
-            assert_eq!(
-                app.autoscroll.active(),
-                on,
-                "real surface, skinned={skinned}"
-            );
-            if !skinned {
-                assert_eq!(app.lyrics_following, !on);
-            }
+            assert_eq!(app.autoscroll.active(), on, "real surface");
+            assert_eq!(app.lyrics_following, !on);
             draw(&mut app, vec![press(egui::PointerButton::Middle, false)]);
             for _ in 0..5 {
                 draw(
@@ -10402,34 +10090,11 @@ mod tests {
                     vec![egui::Event::PointerMoved(anchor + egui::vec2(0.0, 120.0))],
                 );
             }
-            if skinned {
-                if on {
-                    assert!(app.winamp.playlist_scroll > 0);
-                } else {
-                    assert_eq!(app.winamp.playlist_scroll, 0);
-                }
-                assert!(
-                    app.winamp.playlist_selection.is_empty(),
-                    "middle-click must not select a row"
-                );
-            } else {
-                assert_eq!(app.lyrics_following, !on);
-            }
+            assert_eq!(app.lyrics_following, !on);
             assert_eq!(app.now_playing().unwrap().uri, playing);
             draw(&mut app, vec![press(egui::PointerButton::Primary, true)]);
             assert!(!app.autoscroll.active());
             draw(&mut app, vec![press(egui::PointerButton::Primary, false)]);
-            if skinned {
-                // After cancelling, a normal click selects the visible row.
-                draw(&mut app, vec![egui::Event::PointerMoved(anchor)]);
-                draw(&mut app, vec![press(egui::PointerButton::Primary, true)]);
-                draw(&mut app, vec![press(egui::PointerButton::Primary, false)]);
-                assert_eq!(
-                    app.winamp.playlist_selection.len(),
-                    1,
-                    "ordinary row selection must still work after cancellation"
-                );
-            }
             app.backend.shutdown();
         }
     }
@@ -10892,25 +10557,23 @@ mod tests {
     }
 
     /// The title bar choice is saved and, because decorations are fixed when
-    /// a window is created, replaces only the main window's native window.
-    /// The mini player picks it up the next time the main window opens.
+    /// a window is created, replaces the native window.
     #[test]
-    fn choosing_the_custom_title_bar_recreates_only_the_main_window() {
+    fn choosing_the_custom_title_bar_recreates_the_window() {
         let mut app = headless_app();
         let ctx = egui::Context::default();
         app.apply(Action::SetCustomTitlebar(true), &ctx);
         assert!(app.settings.custom_titlebar);
-        assert!(app.switch_intent, "the main window is replaced");
+        assert!(app.reopen_intent, "the window is replaced");
         assert_eq!(crate::window::custom_titlebar(), cfg!(windows));
 
-        app.switch_intent = false;
+        app.reopen_intent = false;
         app.apply(Action::SetCustomTitlebar(true), &ctx);
-        assert!(!app.switch_intent, "an unchanged choice keeps the window");
+        assert!(!app.reopen_intent, "an unchanged choice keeps the window");
 
-        app.settings.winamp_window = true;
         app.apply(Action::SetCustomTitlebar(false), &ctx);
         assert!(!app.settings.custom_titlebar);
-        assert!(!app.switch_intent, "the mini player is not the main window");
+        assert!(app.reopen_intent);
         assert!(!crate::window::custom_titlebar());
     }
 
@@ -11452,109 +11115,6 @@ mod tests {
         assert_eq!(volume_to_percent(0), 0);
         assert_eq!(volume_to_percent(percent_to_volume(70)), 70);
         assert_eq!(percent_to_volume(200), u16::MAX);
-    }
-
-    /// Toggling always-on-top pushes the matching level to the live Winamp
-    /// window, so the change takes effect without recreating the window.
-    #[test]
-    fn the_winamp_window_follows_the_on_top_toggle_live() {
-        assert_eq!(
-            winamp_on_top_level(true, true),
-            Some(egui::WindowLevel::AlwaysOnTop)
-        );
-        assert_eq!(
-            winamp_on_top_level(true, false),
-            Some(egui::WindowLevel::Normal)
-        );
-    }
-
-    /// The setting lives in the big window's Settings page. Toggling it there
-    /// must never force the big window on top, so no level command is sent.
-    #[test]
-    fn the_big_window_never_follows_the_on_top_toggle() {
-        assert_eq!(winamp_on_top_level(false, true), None);
-        assert_eq!(winamp_on_top_level(false, false), None);
-    }
-
-    /// The level set at window creation does not stick on X11, so opening the
-    /// Winamp window with always-on-top saved must schedule a re-assert.
-    #[test]
-    fn opening_the_winamp_window_on_top_schedules_a_reassert() {
-        let ctx = egui::Context::default();
-        let mut app = headless_app();
-        app.settings.winamp_window = true;
-        app.settings.winamp_on_top = true;
-        app.attach(&ctx);
-        assert_eq!(app.winamp_level_reassert, 3);
-    }
-
-    /// Opening the Winamp window without always-on-top re-asserts nothing.
-    #[test]
-    fn opening_the_winamp_window_without_on_top_schedules_no_reassert() {
-        let ctx = egui::Context::default();
-        let mut app = headless_app();
-        app.settings.winamp_window = true;
-        app.settings.winamp_on_top = false;
-        app.attach(&ctx);
-        assert_eq!(app.winamp_level_reassert, 0);
-    }
-
-    #[test]
-    fn unsupported_on_top_controls_keep_the_saved_preference_without_commands() {
-        for saved in [false, true] {
-            let ctx = egui::Context::default();
-            let mut app = headless_app();
-            app.settings.winamp_window = true;
-            app.settings.winamp_on_top = saved;
-            app.window_level_supported = false;
-            app.attach(&ctx);
-            assert_eq!(app.winamp_level_reassert, 0);
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-                app.apply(Action::ToggleWinampOnTop, ui.ctx());
-                app.push_winamp_level(ui.ctx());
-            });
-            output.textures_delta.clear();
-            assert_eq!(app.settings.winamp_on_top, saved);
-            assert!(!app.settings_dirty);
-            assert!(
-                !output.viewport_output[&egui::ViewportId::ROOT]
-                    .commands
-                    .iter()
-                    .any(|command| matches!(command, egui::ViewportCommand::WindowLevel(_)))
-            );
-            app.backend.shutdown();
-        }
-    }
-
-    #[test]
-    fn returning_to_the_mini_player_restores_its_position_and_shade() {
-        let mut app = headless_app();
-        app.settings.winamp_window = true;
-        app.settings.winamp_shaded = true;
-        app.winamp.last_pos = Some([300.0, 200.0]);
-        app.last_window_size = Some([1024.0, 768.0]);
-        app.last_window_pos = Some([100.0, 100.0]);
-
-        let main_ctx = egui::Context::default();
-        app.apply(Action::ToggleWinampWindow, &main_ctx);
-        app.attach(&main_ctx);
-        app.apply(Action::ToggleWinampWindow, &main_ctx);
-
-        let mini_ctx = egui::Context::default();
-        let mut output = mini_ctx.run_ui(Default::default(), |_ui| app.attach(&mini_ctx));
-        output.textures_delta.clear();
-        let commands = &output.viewport_output[&egui::ViewportId::ROOT].commands;
-        assert!(app.settings.winamp_window);
-        assert!(app.settings.winamp_shaded);
-        assert!(commands.contains(&egui::ViewportCommand::Fullscreen(false)));
-        assert!(commands.contains(&egui::ViewportCommand::Maximized(false)));
-        assert!(
-            commands.contains(&egui::ViewportCommand::OuterPosition(egui::pos2(
-                300.0, 200.0
-            )))
-        );
-        assert_eq!(app.session_window_size, Some([1024.0, 768.0]));
-        assert_eq!(app.session_window_pos, Some([100.0, 100.0]));
     }
 
     /// A window left maximized or full screen comes back that way, instead of
@@ -14728,37 +14288,6 @@ mod tests {
         app
     }
 
-    /// With Random on, each switch to the mini player shows a skin other
-    /// than the last one, and choosing a skin turns Random off.
-    #[test]
-    fn a_random_skin_changes_each_time_the_mini_player_opens() {
-        let ctx = egui::Context::default();
-        let mut app = test_app("random-skin");
-        let skins = app.dirs.skins_dir();
-        std::fs::create_dir_all(&skins).unwrap();
-        for name in ["A.wsz", "B.wsz"] {
-            std::fs::write(skins.join(name), b"skin").unwrap();
-        }
-        app.apply(Action::SetRandomSkin(true), &ctx);
-        for _ in 0..6 {
-            let before = app.settings.skin.clone();
-            app.settings.winamp_window = false;
-            app.switch_intent = false;
-            app.apply(Action::ToggleWinampWindow, &ctx);
-            assert!(app.settings.winamp_window);
-            assert_ne!(app.settings.skin, before, "never the same twice in a row");
-        }
-        app.apply(Action::SetSkin(Some("B.wsz".into())), &ctx);
-        assert!(!app.settings.random_skin);
-        app.settings.winamp_window = false;
-        app.apply(Action::ToggleWinampWindow, &ctx);
-        assert_eq!(
-            app.settings.skin.as_deref(),
-            Some("B.wsz"),
-            "a chosen skin stays"
-        );
-    }
-
     /// A change of colours keeps the old ones until the window's picture of
     /// them arrives, or a short wait passes without one, then applies.
     #[test]
@@ -14984,9 +14513,8 @@ mod tests {
         app.adopt_custom_themes(ctx);
     }
 
-    /// Quit wins over everything, a switch between the main window and the
-    /// mini player reopens at once, and closing to the tray runs headless
-    /// until Show or Quit.
+    /// Quit wins over everything, a replaced window reopens at once, and
+    /// closing to the tray runs headless until Show or Quit.
     #[test]
     fn the_shell_learns_what_a_closed_window_means() {
         use fastframe_shell::{Closed, Headless, Resident};
@@ -14995,7 +14523,7 @@ mod tests {
         assert_eq!(app.closed(), Closed::Quit);
         app.hide_intent = true;
         assert_eq!(app.closed(), Closed::Hide);
-        app.switch_intent = true;
+        app.reopen_intent = true;
         assert_eq!(app.closed(), Closed::Reopen);
         app.quit_requested = true;
         assert_eq!(app.closed(), Closed::Quit);
@@ -15977,9 +15505,8 @@ mod tests {
         );
     }
 
-    /// A replaced window, as when the mini player's taskbar setting
-    /// changes, is titled with the playing song again, not left as
-    /// "Spotifast".
+    /// A replaced window, as when the title bar setting changes, is titled
+    /// with the playing song again, not left as "Spotifast".
     #[test]
     fn a_new_window_is_titled_with_the_playing_song() {
         let ctx = egui::Context::default();
@@ -16431,57 +15958,6 @@ mod tests {
         app.attach(&ctx);
         assert_eq!(buttons(&app.thumb_state(false))[1].icon, Icon::Play);
         assert!(!app.thumb_state(false).dark);
-        app.backend.shutdown();
-    }
-
-    #[test]
-    fn changing_mini_taskbar_visibility_recreates_only_an_open_mini_window() {
-        let mut app = headless_app();
-        app.backend.set_offline(true);
-        let ctx = egui::Context::default();
-        app.apply(Action::SetWinampTaskbar(false), &ctx);
-        assert!(!app.settings.winamp_show_taskbar);
-        assert!(!app.switch_intent, "settings do not close the main window");
-        app.settings.winamp_window = true;
-        app.local.track = Some(crate::player::LocalTrack {
-            uri: "spotify:track:continues".into(),
-            ..Default::default()
-        });
-        app.local.playback = Playback::Playing;
-        let mut output = ctx.run_ui(egui::RawInput::default(), |_ui| {
-            app.apply(Action::SetWinampTaskbar(true), &ctx);
-        });
-        output.textures_delta.clear();
-        assert!(app.settings.winamp_window && app.switch_intent);
-        assert!(!app.hide_intent && !app.quit_requested);
-        assert!(
-            output.viewport_output[&egui::ViewportId::ROOT]
-                .commands
-                .iter()
-                .any(|command| matches!(command, egui::ViewportCommand::Close))
-        );
-        assert_eq!(app.local.playback, Playback::Playing);
-        assert_eq!(
-            app.local.track.as_ref().unwrap().uri,
-            "spotify:track:continues"
-        );
-        app.switch_intent = false;
-        let mut output = ctx.run_ui(egui::RawInput::default(), |_ui| {
-            app.apply(Action::SetWinampTaskbar(true), &ctx);
-        });
-        output.textures_delta.clear();
-        assert!(!app.switch_intent);
-        assert!(
-            !output.viewport_output[&egui::ViewportId::ROOT]
-                .commands
-                .iter()
-                .any(|command| matches!(command, egui::ViewportCommand::Close))
-        );
-        app.apply(Action::ToggleWinampWindow, &ctx);
-        assert!(
-            !app.settings.winamp_window,
-            "returning to the main interface remains available"
-        );
         app.backend.shutdown();
     }
 
@@ -21624,61 +21100,6 @@ mod tests {
         );
     }
 
-    /// A skin with a bitmap in it, for pretending one was read.
-    fn some_skin(name: &str) -> crate::skin::Skin {
-        let image = image::RgbImage::from_pixel(275, 116, image::Rgb([9, 9, 9]));
-        let mut png = std::io::Cursor::new(Vec::new());
-        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
-        let archive = crate::skin::zip::write(&[("main.bmp", png.get_ref(), false)]);
-        crate::skin::Skin::from_archive(name, &archive).unwrap()
-    }
-
-    #[test]
-    fn a_skin_read_late_does_not_override_a_newer_choice() {
-        let mut app = headless_app();
-        app.settings.winamp_window = true;
-        app.settings.skin = Some("B.wsz".into());
-        app.skin_loaded(crate::winamp::Loaded {
-            name: "A.wsz".into(),
-            result: Ok(some_skin("A")),
-            installed: false,
-        });
-        assert_eq!(app.winamp.worn.as_deref(), Some("A.wsz"));
-        assert_eq!(app.settings.skin.as_deref(), Some("B.wsz"));
-    }
-
-    #[test]
-    fn a_dropped_skin_becomes_the_choice_and_a_failed_one_is_forgotten() {
-        let mut app = headless_app();
-        app.settings.winamp_window = true;
-        app.skin_loaded(crate::winamp::Loaded {
-            name: "Dropped.wsz".into(),
-            result: Ok(some_skin("Dropped")),
-            installed: true,
-        });
-        assert_eq!(app.settings.skin.as_deref(), Some("Dropped.wsz"));
-        assert_eq!(app.winamp.worn.as_deref(), Some("Dropped.wsz"));
-        assert!(
-            app.toasts
-                .iter()
-                .any(|toast| toast.message == "Added Dropped skin")
-        );
-
-        app.settings.skin = Some("Gone.wsz".into());
-        app.skin_loaded(crate::winamp::Loaded {
-            name: "Gone.wsz".into(),
-            result: Err(crate::skin::SkinError::Empty),
-            installed: false,
-        });
-        assert_eq!(app.settings.skin.as_deref(), Some("Dropped.wsz"));
-        assert_eq!(app.winamp.worn.as_deref(), Some("Dropped.wsz"));
-        assert!(
-            app.toasts
-                .iter()
-                .any(|toast| toast.message.starts_with("Gone: "))
-        );
-    }
-
     /// A link from outside waits for the account and then opens its page;
     /// a song's link opens the album the song is on.
     #[test]
@@ -22154,16 +21575,14 @@ mod tests {
     }
 
     #[test]
-    fn a_closing_main_window_never_takes_the_mini_players_size() {
+    fn a_window_being_replaced_keeps_its_geometry() {
         let mut app = headless_app();
         let ctx = egui::Context::default();
         app.attach(&ctx);
-        app.actions.push(Action::ToggleWinampWindow);
-        app.apply_actions(&ctx);
-        assert!(app.switch_intent && app.settings.winamp_window);
+        app.reopen_intent = true;
 
         // Native close events may leave another UI frame to draw. It still
-        // belongs to the main window, whose geometry eframe will save.
+        // belongs to the retiring window, whose geometry eframe will save.
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.frame_ui(ui));
         output.textures_delta.clear();
         let commands = &output.viewport_output[&egui::ViewportId::ROOT].commands;
@@ -22176,82 +21595,6 @@ mod tests {
                     | egui::ViewportCommand::Maximized(_)
             )),
             "the retiring main window must keep its geometry: {commands:?}"
-        );
-    }
-
-    /// Switching from Winamp back to the main window preserves the main
-    /// window's size and position across the closing mini-window frame.
-    #[test]
-    fn closing_winamp_frame_does_not_overwrite_main_window_geometry() {
-        let mut app = headless_app();
-        app.last_window_size = Some([1024.0, 768.0]);
-        app.last_window_pos = Some([100.0, 150.0]);
-
-        // Toggle from main window to Winamp window
-        let ctx = egui::Context::default();
-        app.actions.push(Action::ToggleWinampWindow);
-        app.apply_actions(&ctx);
-
-        assert!(app.settings.winamp_window);
-        assert!(app.switch_intent);
-        assert_eq!(app.session_window_size, Some([1024.0, 768.0]));
-        assert_eq!(app.session_window_pos, Some([100.0, 150.0]));
-
-        // Attach the Winamp window (clears switch_intent, keeps session geometry)
-        app.attach(&ctx);
-        assert!(!app.switch_intent);
-        assert_eq!(app.session_window_size, Some([1024.0, 768.0]));
-
-        // Trigger switch back to the main window
-        app.actions.push(Action::ToggleWinampWindow);
-
-        // Run the closing frame of the mini-window with its tiny viewport geometry
-        let mut raw_input = egui::RawInput::default();
-        let mini_rect = egui::Rect::from_min_size(egui::pos2(50.0, 50.0), egui::vec2(275.0, 116.0));
-        let viewport = raw_input
-            .viewports
-            .entry(egui::ViewportId::ROOT)
-            .or_default();
-        viewport.inner_rect = Some(mini_rect);
-        viewport.outer_rect = Some(mini_rect);
-
-        let mut closing_output = ctx.run_ui(raw_input, |ui| {
-            app.frame_ui(ui);
-        });
-        closing_output.textures_delta.clear();
-
-        // The closing frame switched window mode and armed switch_intent...
-        assert!(!app.settings.winamp_window);
-        assert!(app.switch_intent);
-
-        // ...but switch_intent prevented the closing mini-window rect from
-        // overwriting the saved main window size and position.
-        assert_eq!(app.last_window_size, Some([1024.0, 768.0]));
-        assert_eq!(app.last_window_pos, Some([100.0, 150.0]));
-        assert_eq!(app.session_window_size, Some([1024.0, 768.0]));
-        assert_eq!(app.session_window_pos, Some([100.0, 150.0]));
-
-        // Attaching the new main window restores the saved geometry via viewport commands
-        let main_ctx = egui::Context::default();
-        let mut output = main_ctx.run_ui(Default::default(), |_ui| {
-            app.attach(&main_ctx);
-        });
-        output.textures_delta.clear();
-
-        let commands = &output
-            .viewport_output
-            .get(&egui::ViewportId::ROOT)
-            .expect("the root viewport")
-            .commands;
-        assert!(
-            commands.contains(&egui::ViewportCommand::InnerSize(egui::vec2(1024.0, 768.0))),
-            "attach restored the main window size: {commands:?}"
-        );
-        assert!(
-            commands.contains(&egui::ViewportCommand::OuterPosition(egui::pos2(
-                100.0, 150.0
-            ))),
-            "attach restored the main window position: {commands:?}"
         );
     }
 

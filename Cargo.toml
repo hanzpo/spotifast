@@ -74,23 +74,11 @@ fastframe-instance = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1
 # Windows, Now Playing on macOS. The media keys and those panels send
 # commands back, and closing the window keeps the music playing.
 fastframe-now-playing = { git = "https://github.com/crmne/fastframe", tag = "v0.4.1" }
-# Reading installed fonts for the Winamp playlist's pixel text and the
-# playlist face. skrifa is the parser epaint already rasterizes with, and
-# the version has to track epaint's or the binary compiles two copies of it; memmap2 keeps the search for the playlist face
-# to the few pages of each font that name it. fastframe-fonts uses both.
-skrifa = "0.44"
-memmap2 = "0.9"
-# bmp is for Winamp skins, whose bitmaps are BMP files.
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
-# Inflating the zip a Winamp skin comes as (src/skin/zip.rs). Already
-# compiled for reqwest's gzip support, so this adds no code to the build.
-flate2 = "1"
-# Filling glyph outlines with no anti-aliasing for the Winamp playlist's
-# text (src/ui/winamp/pixel_text.rs). Already compiled for the SVG icons
-# through egui_extras and resvg, so this adds no code to the build.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Drawing the Windows taskbar thumbnail buttons (src/thumbbar.rs). Already
+# compiled for the SVG icons through egui_extras and resvg, so this adds no
+# code to the build.
 tiny-skia = "0.11"
-# Detect the live window backend. eframe already compiles this crate.
-raw-window-handle = "0.6"
 # Spotify playback and Connect. rustls everywhere so the client links one TLS
 # stack and builds without OpenSSL on every platform.
 #
@@ -155,6 +143,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }
+# The window handle the taskbar thumbnail buttons attach to. eframe already
+# compiles this crate.
+raw-window-handle = "0.6"
 # Message loops, the taskbar thumbnail buttons and window styles.
 windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
@@ -166,10 +157,6 @@ librespot-playback = { version = "0.8", default-features = false, features = ["p
 # (src/appearance.rs). fastframe-now-playing's MPRIS already compiles this
 # version.
 zbus = { version = "5", default-features = false, features = ["tokio"] }
-# Keeps the X11 mini player out of the taskbar with _NET_WM_STATE_SKIP_TASKBAR
-# (src/window.rs), which winit only offers on Windows. winit already
-# compiles this version.
-x11rb = { version = "0.13", default-features = false }
 
 [build-dependencies]
 # Drops unfinished PO entries and compiles catalog text and gettext plural
@@ -242,7 +229,7 @@ winit = { git = "https://github.com/crmne/winit", rev = "ed7caa9023f10b397f5b6ec
 # compatibility fix. Drop this fork when a release includes both changes.
 hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca4811371ddae81c06be168de54194938d70b1" }
 # librespot 0.8.0 plus the small patches Spotifast needs: queue controls,
-# normalisation-factor reporting for the visualisers, and a distinct event
+# normalisation-factor reporting, and a distinct event
 # when Spotify refuses an audio key, bounded socket setup with DNS address
 # fallback, an in-memory credential cache for platform storage, full
 # playback-state recovery after a session disconnect, the desktop platform

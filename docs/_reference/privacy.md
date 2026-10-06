@@ -21,7 +21,7 @@ current release.
   on Spotify's own pages. A proxy password, if you set one, uses the same
   store.
 - **Settings and history.** Settings, window positions, recent plays, the
-  last session, skins and themes live in the config directory.
+  last session and themes live in the config directory.
 - **Caches.** Downloaded audio, artwork, lyrics and library metadata live in
   the cache directory and can be deleted at any time.
 - **Log.** `spotifast.log` records errors and diagnostics. It stays on your
@@ -45,8 +45,7 @@ Spotifast connects only to the services below.
 - **Your local network.** Spotifast looks for Spotify Connect speakers over
   mDNS and talks to the ones you choose.
 
-Links you open from the app, such as the Winamp Skin Museum or this website,
-open in your browser.
+Links you open from the app, such as this website, open in your browser.
 
 ## This website
 

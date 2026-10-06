@@ -4,11 +4,15 @@
 //! from -12 to +12 dB. The UI writes settings behind a mutex; the player reads
 //! them once per packet and rebuilds filters only after changes.
 //!
-//! This stage does not clip boosted samples. `vis::Tapped` limits the signal
+//! This stage does not clip boosted samples. [`EqSink`] limits the signal
 //! later, after accounting for output volume.
 
 use std::sync::{Arc, Mutex};
 
+use librespot_playback::audio_backend::{Sink, SinkResult};
+use librespot_playback::convert::Converter;
+use librespot_playback::decoder::AudioPacket;
+use librespot_playback::mixer::VolumeGetter;
 use librespot_playback::{NUM_CHANNELS, SAMPLE_RATE};
 
 /// The centre frequencies, Winamp's, in hertz.
@@ -220,11 +224,7 @@ pub struct Preset {
     pub bands_db: [f32; 10],
 }
 
-/// Winamp's presets, in its order.
-/// How many of `PRESETS` are Winamp's own, in its order; what follows
-/// are scenario presets of this app's, shown behind a separator.
-pub const WINAMP_PRESET_COUNT: usize = 18;
-
+/// Winamp's presets, in its order, then scenario presets of this app's.
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Flat",
@@ -467,16 +467,100 @@ impl Processor {
                 // the one ceiling in the chain sits at the end, past the
                 // volume: a boost that would clip at full volume is fine
                 // three notches down, and holding it back here would take
-                // that away for good. See `vis::Tapped`.
+                // that away for good. See `EqSink`.
                 *sample *= gain;
             }
         }
     }
 }
 
+/// Runs the equalizer and the final limiter before passing audio to the
+/// real sink.
+pub struct EqSink {
+    inner: Box<dyn Sink>,
+    eq: Processor,
+    /// Player volume, used to calculate the limiter ceiling.
+    volume: Box<dyn VolumeGetter + Send>,
+    /// Whether this wrapper applies volume. Otherwise the inner sink applies
+    /// it, to already queued audio.
+    applies_volume: bool,
+    /// Final limiter, placed here because this stage knows the output volume.
+    limiter: crate::limiter::Limiter,
+}
+
+impl EqSink {
+    pub fn new(
+        inner: Box<dyn Sink>,
+        volume: Box<dyn VolumeGetter + Send>,
+        applies_volume: bool,
+        eq: SharedEq,
+    ) -> Self {
+        Self {
+            inner,
+            eq: Processor::new(eq),
+            volume,
+            applies_volume,
+            limiter: crate::limiter::Limiter::new(f64::from(SAMPLE_RATE)),
+        }
+    }
+}
+
+/// Full-scale level for samples leaving `EqSink`.
+///
+/// This is 1.0 after volume is applied. Before volume, it is the level that
+/// becomes 1.0 after the inner sink applies volume.
+fn full_scale(volume: f64, applied: bool) -> Option<f64> {
+    if applied {
+        Some(1.0)
+    } else if volume > f64::EPSILON {
+        Some(1.0 / volume)
+    } else {
+        // At zero volume, no finite pre-volume ceiling is needed.
+        None
+    }
+}
+
+impl Sink for EqSink {
+    fn start(&mut self) -> SinkResult<()> {
+        self.inner.start()
+    }
+
+    fn stop(&mut self) -> SinkResult<()> {
+        self.inner.stop()
+    }
+
+    fn write(&mut self, packet: AudioPacket, converter: &mut Converter) -> SinkResult<()> {
+        let packet = match packet {
+            AudioPacket::Samples(mut samples) => {
+                self.eq.process(&mut samples);
+                let attenuation = self.volume.attenuation_factor();
+                if self.applies_volume {
+                    for sample in &mut samples {
+                        *sample *= attenuation;
+                    }
+                }
+                if let Some(full_scale) = full_scale(attenuation, self.applies_volume) {
+                    self.limiter.process(&mut samples, full_scale);
+                }
+                AudioPacket::Samples(samples)
+            }
+            raw => raw,
+        };
+        self.inner.write(packet, converter)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_scale_follows_the_volume_still_to_come() {
+        assert_eq!(full_scale(0.5, true), Some(1.0), "already applied: one");
+        assert_eq!(full_scale(0.25, false), Some(4.0), "a quarter to come");
+        assert_eq!(full_scale(1.0, false), Some(1.0), "full volume to come");
+        assert_eq!(full_scale(0.0, false), None, "silence has no ceiling");
+    }
 
     fn tone(hz: f32, frames: usize) -> Vec<f64> {
         (0..frames)

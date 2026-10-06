@@ -1116,49 +1116,17 @@ pub enum Action {
     ClearArtCache,
     /// Clear local play history.
     ClearPlayHistory,
-    /// Open or close the Winamp window.
-    ToggleWinampWindow,
-    /// Select a skin, or the built-in skin for `None`.
-    SetSkin(Option<String>),
-    /// Install and select a skin file.
-    InstallSkin(std::path::PathBuf),
-    /// Screen pixels per skin pixel in the Winamp window.
-    SetSkinScale(u8),
-    ToggleWinampOnTop,
-    SetWinampTaskbar(bool),
     /// Windows: draw Spotifast's own title bar instead of the standard one.
     SetCustomTitlebar(bool),
-    OpenSkinsFolder,
-    /// Pick a different skin each time the mini player opens.
-    SetRandomSkin(bool),
-    /// Cycle bars, scope, and off.
-    CycleVisualiser,
-    /// Set the visualizer mode directly.
-    SetVisualiser(crate::settings::VisMode),
-    /// Open or close the playlist window under the mini player.
-    ToggleWinampPlaylist,
-    /// The playlist window's height, in skin pixels.
-    SetPlaylistHeight(u32),
-    /// Open or close the equalizer window under the mini player.
-    ToggleWinampEq,
     /// Switch the equalizer's effect on the sound on or off.
     ToggleEq,
     SetEqBand(usize, f32),
     SetEqPreamp(f32),
     /// One of Winamp's presets, by its place in the list.
     ApplyEqPreset(usize),
-    /// The balance, -1 all left to 1 all right.
-    SetBalance(f32),
-    ToggleMono,
-    /// Roll the playlist window up to its title bar, or down again.
-    ToggleWinampPlaylistShade,
-    /// Roll the equalizer window up to its title bar, or down again.
-    ToggleWinampEqShade,
     /// Close the window the way its close button does: into the tray when
     /// that is on, out of the app otherwise.
     CloseWindow,
-    /// Roll the main window up to its title bar, or down again.
-    ToggleWinampShade,
     Quit,
 }
 
