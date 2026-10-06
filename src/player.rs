@@ -707,7 +707,7 @@ fn sink_builder(
         return (
             Box::new(move || {
                 let sink = builder(device, AudioFormat::S16);
-                Box::new(EqSink::new(sink, applied, true, eq)) as Box<dyn Sink>
+                Box::new(EqSink::new(sink, audio, applied, true, eq)) as Box<dyn Sink>
             }),
             Box::new(NoOpVolume),
         );
@@ -718,8 +718,14 @@ fn sink_builder(
     let ceiling = mixer.get_soft_volume();
     (
         Box::new(move || {
-            let sink = Box::new(RodioSink::new(device, report, volume, buffer_ms, audio));
-            Box::new(EqSink::new(sink, ceiling, false, eq)) as Box<dyn Sink>
+            let sink = Box::new(RodioSink::new(
+                device,
+                report,
+                volume,
+                buffer_ms,
+                Arc::clone(&audio),
+            ));
+            Box::new(EqSink::new(sink, audio, ceiling, false, eq)) as Box<dyn Sink>
         }),
         Box::new(NoOpVolume),
     )
