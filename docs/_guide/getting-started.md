@@ -128,7 +128,9 @@ packaging/macos/install.sh
 ```
 
 It quits a running copy, replaces `/Applications/Spotlite.app`, and opens the
-new one. Set `ICON` to an `.icns` file to use a different app icon.
+new one. When the Spotify app is installed, its icon is used; set `ICON` to
+another `.icns` file to use that instead, or to an empty string to keep the
+bundled icon.
 
 On Linux, you need the development packages for ALSA, PulseAudio or PipeWire,
 and the windowing libraries. On Arch:

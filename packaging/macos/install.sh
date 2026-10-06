@@ -3,8 +3,10 @@
 #
 #   packaging/macos/install.sh
 #
-# Set ICON to an .icns file to use it as the app icon instead of the
-# bundled one. Set APP_DIR to install somewhere other than /Applications.
+# The icon comes from the Spotify app installed on this Mac when there is
+# one, read at install time so it never enters the repository. Set ICON to
+# another .icns file to use that instead, or to an empty string to keep the
+# bundled icon. Set APP_DIR to install somewhere other than /Applications.
 # A running copy is quit first and the new one is opened afterwards.
 set -euo pipefail
 
@@ -18,6 +20,10 @@ bundle="target/Spotlite.app"
 cargo build --release --locked
 packaging/macos/bundle.sh target/release/spotifast "$bundle" "$version"
 
+spotify_icon=/Applications/Spotify.app/Contents/Resources/AppIcon.icns
+if [ -z "${ICON+set}" ] && [ -f "$spotify_icon" ]; then
+    ICON=$spotify_icon
+fi
 if [ -n "${ICON:-}" ]; then
     cp "$ICON" "$bundle/Contents/Resources/spotifast.icns"
     # Replacing a resource breaks the signature bundle.sh made.
