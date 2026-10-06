@@ -31,6 +31,9 @@ pub struct Cache {
     artists: Vec<Artist>,
     #[serde(default)]
     shows: Vec<SavedShow>,
+    /// The sidebar's playlists, whole.
+    #[serde(default)]
+    playlists: Option<Vec<Playlist>>,
 }
 
 impl Cache {
@@ -61,6 +64,7 @@ impl Cache {
                 .cloned()
                 .collect(),
             shows: library.shows.leading(LIBRARY_ROWS),
+            playlists: library.complete_playlists().cloned(),
         }
     }
 
@@ -74,6 +78,9 @@ impl Cache {
         library.albums.show_cached(self.albums);
         library.artists.show_cached(self.artists);
         library.shows.show_cached(self.shows);
+        if let Some(playlists) = self.playlists {
+            library.show_cached_playlists(playlists);
+        }
         fill(&mut home.recently_played, self.recently_played);
         fill(&mut home.top_artists, self.top_artists);
         fill(&mut home.top_tracks, self.top_tracks);

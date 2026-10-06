@@ -598,12 +598,42 @@ pub struct Library {
     /// The later playlist page on its way, so a second answer for a page
     /// already taken adds nothing.
     pub playlists_asked: Option<u32>,
+    /// A refresh of a list shown from the last session: its pages gather
+    /// here and replace the shown list whole, once the last one arrives,
+    /// so the list never shrinks to one page and grows back.
+    pub playlists_refresh: Option<Vec<Playlist>>,
+    /// The shown list is the last session's, still to be confirmed.
+    pub playlists_from_cache: bool,
     pub liked: PagedList<SavedTrack>,
     pub albums: PagedList<SavedAlbum>,
     pub artists: CursorList<Artist>,
     pub shows: PagedList<SavedShow>,
     pub episodes: PagedList<SavedEpisode>,
     pub filter: String,
+}
+
+impl Library {
+    /// Shows the last session's playlists while Spotify is asked for them.
+    /// A list Spotify has answered keeps that answer, and a load already
+    /// on its way gathers its pages to replace these whole.
+    pub fn show_cached_playlists(&mut self, playlists: Vec<Playlist>) {
+        match self.playlists {
+            Loadable::Loaded(_) => return,
+            Loadable::Loading => self.playlists_refresh = Some(Vec::new()),
+            Loadable::NotLoaded | Loadable::Failed(_) => {}
+        }
+        self.playlists = Loadable::Loaded(playlists);
+        self.playlists_from_cache = true;
+    }
+
+    /// The whole list, once no load is gathering or paging through it.
+    pub fn complete_playlists(&self) -> Option<&Vec<Playlist>> {
+        (self.playlists_refresh.is_none()
+            && self.playlists_next.is_none()
+            && self.playlists_asked.is_none())
+        .then(|| self.playlists.get())
+        .flatten()
+    }
 }
 
 #[derive(Default)]

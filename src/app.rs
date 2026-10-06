@@ -3251,10 +3251,15 @@ impl App {
     // ---- loading ---------------------------------------------------------------
 
     fn load_playlists(&mut self) {
-        if self.library.playlists.is_loading() {
+        if self.library.playlists.is_loading() || self.library.playlists_refresh.is_some() {
             return;
         }
-        self.library.playlists = Loadable::Loading;
+        // The last session's list stays up until the fresh one is whole.
+        if self.library.playlists_from_cache && self.library.playlists.get().is_some() {
+            self.library.playlists_refresh = Some(Vec::new());
+        } else {
+            self.library.playlists = Loadable::Loading;
+        }
         self.library.playlists_next = None;
         self.library.playlists_asked = None;
         self.library.playlists_generation += 1;
@@ -4839,10 +4844,23 @@ impl App {
                 Ok(page) => {
                     self.library.playlists_asked = None;
                     let next_offset = page.next_offset();
-                    match &mut self.library.playlists {
-                        Loadable::Loaded(existing) if offset > 0 => existing.extend(page.items),
-                        slot => *slot = Loadable::Loaded(page.items),
+                    if let Some(gathered) = self.library.playlists_refresh.as_mut() {
+                        if offset == 0 {
+                            gathered.clear();
+                        }
+                        gathered.extend(page.items);
+                        if next_offset.is_none() {
+                            let fresh = self.library.playlists_refresh.take().unwrap_or_default();
+                            self.library.playlists = Loadable::Loaded(fresh);
+                            self.library.playlists_from_cache = false;
+                        }
+                    } else {
+                        match &mut self.library.playlists {
+                            Loadable::Loaded(existing) if offset > 0 => existing.extend(page.items),
+                            slot => *slot = Loadable::Loaded(page.items),
+                        }
                     }
+                    self.home_cache_dirty |= next_offset.is_none();
                     self.library.playlists_next = next_offset;
                     if next_offset.is_some() {
                         self.load_more(Page::Home);
@@ -4868,7 +4886,11 @@ impl App {
                 }
                 Err(error) => {
                     self.library.playlists_asked = None;
-                    if offset == 0 {
+                    if self.library.playlists_refresh.take().is_some() {
+                        // The last session's list stays; the next load
+                        // tries again.
+                        log::warn!("couldn't refresh the playlists: {error}");
+                    } else if offset == 0 {
                         self.library.playlists = Loadable::Failed(error.to_string());
                     } else {
                         self.toast_error(
@@ -14350,6 +14372,83 @@ mod tests {
         assert_eq!(app.home.top_artists.get().map(Vec::len), Some(1));
         // A restored copy is not written back as though it were new.
         assert!(!app.home_cache_dirty);
+    }
+
+    /// The last session's playlists fill the sidebar at start-up, and a
+    /// refresh replaces them whole: the list never drops to one page and
+    /// grows back, and a failed refresh leaves it up.
+    #[test]
+    fn cached_playlists_stay_until_the_whole_fresh_list_arrives() {
+        let signed_in = || {
+            let mut app = headless_app();
+            app.user = Some(User {
+                id: "alice".into(),
+                ..Default::default()
+            });
+            app
+        };
+        let playlist = |id: String| Playlist {
+            uri: format!("spotify:playlist:{id}"),
+            name: id.clone(),
+            id,
+            ..Default::default()
+        };
+        let last = Library {
+            playlists: Loadable::Loaded((0..80).map(|n| playlist(format!("old{n}"))).collect()),
+            ..Default::default()
+        };
+        let cache = crate::home_cache::Cache::capture("alice".into(), &HomeData::default(), &last);
+        let restore = |app: &mut App| {
+            app.handle_backend_events(vec![Event::HomeCache {
+                account_id: "alice".into(),
+                cache: Some(cache.clone()),
+            }]);
+        };
+
+        // #given the live load is on its way when the cache arrives
+        let mut app = signed_in();
+        app.load_playlists();
+        let generation = app.library.playlists_generation;
+        restore(&mut app);
+        assert_eq!(app.library.playlists.get().map(Vec::len), Some(80));
+
+        // #when the first of two pages answers
+        let page = |offset: u32, ids: std::ops::Range<u32>, more: bool| ApiResponse::MyPlaylists {
+            offset,
+            generation,
+            result: Ok(crate::api::models::Page {
+                items: ids.map(|n| playlist(format!("new{n}"))).collect(),
+                total: 75,
+                limit: 50,
+                offset,
+                next: more.then(|| "more".to_string()),
+            }),
+        };
+        app.handle_api(page(0, 0..50, true));
+        // #then the shown list is still the whole old one
+        assert_eq!(app.library.playlists.get().map(Vec::len), Some(80));
+        assert_eq!(app.library.playlists.get().unwrap()[0].id, "old0");
+
+        // #when the last page answers, the fresh list replaces it whole
+        app.handle_api(page(50, 50..75, false));
+        let shown = app.library.playlists.get().unwrap();
+        assert_eq!(shown.len(), 75);
+        assert_eq!(shown[0].id, "new0");
+        assert!(!app.library.playlists_from_cache);
+
+        // #given another launch whose refresh fails
+        let mut app = signed_in();
+        app.load_playlists();
+        let generation = app.library.playlists_generation;
+        restore(&mut app);
+        app.handle_api(ApiResponse::MyPlaylists {
+            offset: 0,
+            generation,
+            result: Err(crate::api::ApiError::RateLimited),
+        });
+        // #then the last session's list stays up
+        assert_eq!(app.library.playlists.get().map(Vec::len), Some(80));
+        assert!(app.library.playlists_refresh.is_none());
     }
 
     /// Fresh shelves from Spotify are written once, not on every answer.

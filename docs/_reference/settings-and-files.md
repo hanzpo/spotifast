@@ -150,7 +150,8 @@ directory, one JSON file per account. Once Spotify confirms the account,
 Home shows the last session's shelves while it asks for fresh ones, and a
 shelf Spotify has already answered keeps that answer. The same file keeps
 the first 50 saved albums, followed artists and saved podcasts, which the
-library shows until Spotify's first page replaces them. The file is rewritten
+library shows until Spotify's first page replaces them, and the whole
+playlist list, which a refresh replaces only once every page has arrived. The file is rewritten
 at most every 20 seconds after new shelves arrive, and when the app quits.
 
 The last good playlist folder tree is kept in `session.json`, scoped to the
