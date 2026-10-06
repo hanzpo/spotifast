@@ -14,6 +14,7 @@ pub mod demo;
 pub mod emoji;
 pub mod eq;
 pub mod history;
+pub mod home_cache;
 pub mod http;
 pub mod i18n;
 pub mod images;

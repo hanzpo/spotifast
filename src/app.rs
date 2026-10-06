@@ -394,6 +394,8 @@ pub struct App {
     /// Covers whose download failed, and when, so their colour is asked for
     /// again after a pause rather than never or on every frame.
     accent_failed: HashMap<String, Instant>,
+    /// Home has shelves from Spotify that the disk copy does not hold yet.
+    home_cache_dirty: bool,
 
     pub dialog: Option<Dialog>,
     cover_request: u64,
@@ -824,6 +826,7 @@ impl App {
             accents: HashMap::new(),
             accent_pending: HashSet::new(),
             accent_failed: HashMap::new(),
+            home_cache_dirty: false,
             dialog: None,
             cover_request: 0,
             cover_uploads: HashMap::new(),
@@ -1880,6 +1883,13 @@ impl App {
                 } => {
                     self.receive_liked_cache(&account_id, generation, cache);
                 }
+                Event::HomeCache { account_id, cache } => {
+                    if self.user_id() == Some(account_id.as_str())
+                        && let Some(cache) = cache.filter(|cache| cache.valid_for(&account_id))
+                    {
+                        cache.restore(&mut self.home);
+                    }
+                }
                 Event::UserName { id, name } => {
                     self.set_user_name(id, name);
                 }
@@ -1986,6 +1996,7 @@ impl App {
         self.liked_songs = crate::liked::LikedSongs::default();
         self.liked_recheck_at = None;
         self.home = HomeData::default();
+        self.home_cache_dirty = false;
         self.playlist_pages.clear();
         self.album_pages.clear();
         self.artist_pages.clear();
@@ -2666,6 +2677,7 @@ impl App {
             self.last_eviction = now;
             self.backend.art().evict(ctx);
             self.evict_stale_pages();
+            self.checkpoint_home();
         }
         if self.settings_dirty && self.last_settings_save.elapsed() > Duration::from_secs(2) {
             self.save_settings();
@@ -4464,7 +4476,11 @@ impl App {
                         self.premium_notice_shown = true;
                         self.dialog = Some(Dialog::PremiumNeeded);
                     }
-                    if self.user_id() != Some(user.id.as_str()) {
+                    let new_account = self.user_id() != Some(user.id.as_str());
+                    if new_account {
+                        self.backend.send(Command::LoadHomeCache {
+                            account_id: user.id.clone(),
+                        });
                         self.rootlist = self
                             .rootlist_cache
                             .as_ref()
@@ -4668,6 +4684,7 @@ impl App {
                     }
                     if let Ok(page) = &result {
                         self.note_recent_contexts(&page.items);
+                        self.home_cache_dirty = true;
                     }
                     let items = result
                         .as_ref()
@@ -4747,6 +4764,7 @@ impl App {
                     let uris: Vec<String> = tracks.iter().map(|track| track.uri.clone()).collect();
                     self.request_contains(uris);
                     self.home.top_tracks = Loadable::Loaded(tracks);
+                    self.home_cache_dirty = true;
                 } else if generation == self.home.generation
                     && offset == 0
                     && let Err(error) = result
@@ -4759,6 +4777,7 @@ impl App {
                 if generation != self.home.generation {
                     return;
                 }
+                self.home_cache_dirty |= result.is_ok();
                 self.home.top_artists.refresh(result);
             }
             ApiResponse::Recommendations { generation, result } => {
@@ -4769,6 +4788,7 @@ impl App {
                     let uris: Vec<String> = tracks.iter().map(|track| track.uri.clone()).collect();
                     self.request_contains(uris);
                 }
+                self.home_cache_dirty |= result.is_ok();
                 self.home.recommendations.refresh(result);
             }
             ApiResponse::Discover {
@@ -4804,6 +4824,7 @@ impl App {
                 });
                 if complete {
                     self.home.discover = std::mem::take(&mut self.home.discover_pending);
+                    self.home_cache_dirty = true;
                 }
             }
             // A reload reads the playlists from the top again under a new
@@ -5405,7 +5426,10 @@ impl App {
             },
             ApiResponse::HomeEpisodes { generation, .. } if generation != self.home.generation => {}
             ApiResponse::HomeEpisodes { result, .. } => match result {
-                Ok(podcasts) => self.home.podcasts = podcasts,
+                Ok(podcasts) => {
+                    self.home.podcasts = podcasts;
+                    self.home_cache_dirty = true;
+                }
                 // The shelf is an extra: without an answer it keeps what it
                 // showed, or stays hidden.
                 Err(error) => log::debug!("podcast episodes for Home unavailable: {error}"),
@@ -9311,6 +9335,8 @@ impl App {
 
     /// Final teardown at real quit.
     pub fn shutdown(&mut self) {
+        // Sent before Shutdown, so the backend writes it before it stops.
+        self.checkpoint_home();
         self.save_state();
         self.backend.shutdown();
     }
@@ -9391,6 +9417,18 @@ impl App {
         self.liked_songs.sync_view(&mut self.library.liked);
         for (uri, saved) in self.liked_songs.intents() {
             self.set_saved_state(uri, saved);
+        }
+    }
+
+    /// Writes the Home shelves to disk once Spotify has answered for some.
+    fn checkpoint_home(&mut self) {
+        if !self.home_cache_dirty {
+            return;
+        }
+        if let Some(account) = self.user_id().map(str::to_owned) {
+            self.home_cache_dirty = false;
+            let cache = crate::home_cache::Cache::capture(account, &self.home);
+            self.backend.send(Command::StoreHomeCache(cache));
         }
     }
 
@@ -14262,6 +14300,76 @@ mod tests {
         );
         app.reveal_theme_changes = false;
         app
+    }
+
+    /// Home's shelves from the last session fill in at start-up, for the
+    /// signed-in account only, and never over an answer from Spotify.
+    #[test]
+    fn home_shelves_from_disk_fill_only_what_spotify_has_not_answered() {
+        let mut app = headless_app();
+        app.user = Some(User {
+            id: "alice".into(),
+            ..Default::default()
+        });
+        let track = |uri: &str| Track {
+            uri: uri.into(),
+            ..Default::default()
+        };
+        let last_session = HomeData {
+            top_tracks: Loadable::Loaded(vec![track("spotify:track:old")]),
+            top_artists: Loadable::Loaded(vec![Artist::default()]),
+            ..Default::default()
+        };
+        let cache = |account: &str| Event::HomeCache {
+            account_id: account.into(),
+            cache: Some(crate::home_cache::Cache::capture(
+                account.into(),
+                &last_session,
+            )),
+        };
+
+        // #given another account's shelves arrive
+        app.handle_backend_events(vec![cache("bob")]);
+        // #then they are ignored
+        assert!(app.home.top_artists.get().is_none());
+
+        // #given Spotify answered for top songs first
+        app.home.top_tracks = Loadable::Loaded(vec![track("spotify:track:new")]);
+        app.home.top_artists = Loadable::Loading;
+        app.handle_backend_events(vec![cache("alice")]);
+
+        // #then the answer stays and the waiting shelf is filled
+        assert_eq!(
+            app.home.top_tracks.get().unwrap()[0].uri,
+            "spotify:track:new"
+        );
+        assert_eq!(app.home.top_artists.get().map(Vec::len), Some(1));
+        // A restored copy is not written back as though it were new.
+        assert!(!app.home_cache_dirty);
+    }
+
+    /// Fresh shelves from Spotify are written once, not on every answer.
+    #[test]
+    fn fresh_home_shelves_are_checkpointed_once() {
+        let mut app = headless_app();
+        app.user = Some(User {
+            id: "alice".into(),
+            ..Default::default()
+        });
+        app.handle_api(ApiResponse::TopArtists {
+            generation: app.home.generation,
+            result: Ok(vec![Artist::default()]),
+        });
+        assert!(app.home_cache_dirty);
+        app.checkpoint_home();
+        assert!(!app.home_cache_dirty);
+
+        // #then a failed refresh does not ask for another write
+        app.handle_api(ApiResponse::TopArtists {
+            generation: app.home.generation,
+            result: Err(crate::api::ApiError::RateLimited),
+        });
+        assert!(!app.home_cache_dirty);
     }
 
     /// A cover whose download failed is asked for again after a pause,

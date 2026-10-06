@@ -112,14 +112,15 @@ impl AppDirs {
     }
 
     pub fn liked_songs_cache_file(&self, account_id: &str) -> PathBuf {
-        // Hex encoding also keeps unusual account IDs within the cache root.
-        let account: String = account_id
-            .bytes()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
         self.cache
             .join("liked-songs")
-            .join(format!("{account}.json"))
+            .join(format!("{}.json", account_file_name(account_id)))
+    }
+
+    pub fn home_cache_file(&self, account_id: &str) -> PathBuf {
+        self.cache
+            .join("home")
+            .join(format!("{}.json", account_file_name(account_id)))
     }
 
     pub fn ensure(&self) -> std::io::Result<()> {
@@ -128,4 +129,12 @@ impl AppDirs {
         }
         Ok(())
     }
+}
+
+/// Hex encoding keeps unusual account IDs within the cache root.
+fn account_file_name(account_id: &str) -> String {
+    account_id
+        .bytes()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
