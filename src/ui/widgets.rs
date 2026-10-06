@@ -2765,19 +2765,32 @@ pub fn search_field(
     let height = 34.0;
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     let has_focus = ui.memory(|memory| memory.has_focus(id));
-    let fill = if has_focus {
-        palette.surface_hover
+    if cfg!(target_os = "macos") {
+        theme::paint_glass(ui.painter(), rect, palette, has_focus);
+        if has_focus {
+            // macOS rings a focused field in its accent.
+            ui.painter().rect_stroke(
+                rect.expand(1.0),
+                height / 2.0 + 1.0,
+                Stroke::new(3.0, palette.accent.gamma_multiply(0.55)),
+                egui::StrokeKind::Outside,
+            );
+        }
     } else {
-        palette.surface
-    };
-    ui.painter().rect_filled(rect, height / 2.0, fill);
-    if has_focus {
-        ui.painter().rect_stroke(
-            rect,
-            height / 2.0,
-            Stroke::new(1.5, palette.text.gamma_multiply(0.6)),
-            egui::StrokeKind::Inside,
-        );
+        let fill = if has_focus {
+            palette.surface_hover
+        } else {
+            palette.surface
+        };
+        ui.painter().rect_filled(rect, height / 2.0, fill);
+        if has_focus {
+            ui.painter().rect_stroke(
+                rect,
+                height / 2.0,
+                Stroke::new(1.5, palette.text.gamma_multiply(0.6)),
+                egui::StrokeKind::Inside,
+            );
+        }
     }
     let icon_rect =
         Rect::from_center_size(pos2(rect.left() + 18.0, rect.center().y), Vec2::splat(16.0));

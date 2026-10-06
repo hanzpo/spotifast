@@ -26,7 +26,7 @@ pub const MARGIN: f32 = 12.0;
 /// The capsule's corner radius.
 const RADIUS: u8 = 22;
 /// How opaque the capsule's glass is over the page scrolling beneath it.
-const GLASS_ALPHA: u8 = 214;
+const GLASS_ALPHA: u8 = 238;
 
 /// The room a page leaves at its foot so its last rows can scroll clear of
 /// the capsule.

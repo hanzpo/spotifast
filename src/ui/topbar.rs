@@ -159,6 +159,19 @@ fn nav_button(
     enabled: bool,
     tooltip: &str,
 ) -> egui::Response {
+    nav_button_in(ui, palette, icon, enabled, tooltip, false)
+}
+
+/// A navigation button, alone on its own glass or `grouped` on one shared
+/// with its neighbour.
+fn nav_button_in(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    icon: Icon,
+    enabled: bool,
+    tooltip: &str,
+    grouped: bool,
+) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::splat(32.0),
         if enabled {
@@ -168,12 +181,22 @@ fn nav_button(
         },
     );
     if ui.is_rect_visible(rect) {
-        let fill = if palette.dark {
-            egui::Color32::from_black_alpha(90)
+        if grouped {
+            // The group's glass is under it; a hover lifts this half.
+            if enabled && response.hovered() {
+                ui.painter().circle_filled(
+                    rect.center(),
+                    14.0,
+                    if palette.dark {
+                        egui::Color32::from_white_alpha(18)
+                    } else {
+                        egui::Color32::from_black_alpha(12)
+                    },
+                );
+            }
         } else {
-            egui::Color32::from_black_alpha(20)
-        };
-        ui.painter().circle_filled(rect.center(), 16.0, fill);
+            theme::paint_glass(ui.painter(), rect, palette, enabled && response.hovered());
+        }
         let color = if !enabled {
             palette.dim
         } else if response.hovered() {
@@ -242,23 +265,32 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             {
                 app.actions.push(Action::Open(Page::Home));
             }
-            if nav_button(
+            // Back and Forward share one capsule of glass, as a toolbar
+            // groups them.
+            let group = egui::Rect::from_min_size(
+                pos2(ui.cursor().left(), ui.max_rect().center().y - 16.0),
+                vec2(2.0 * 32.0 + ITEM_SPACING, 32.0),
+            );
+            theme::paint_glass(ui.painter(), group, &palette, false);
+            if nav_button_in(
                 ui,
                 &palette,
                 Icon::ChevronLeft,
                 app.can_go_back(),
                 &gettext(locale, "Back"),
+                true,
             )
             .clicked()
             {
                 app.actions.push(Action::Back);
             }
-            if nav_button(
+            if nav_button_in(
                 ui,
                 &palette,
                 Icon::ChevronRight,
                 app.can_go_forward(),
                 &gettext(locale, "Forward"),
+                true,
             )
             .clicked()
             {

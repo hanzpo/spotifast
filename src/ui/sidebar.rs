@@ -9,7 +9,7 @@ use crate::model::{Action, Dialog, DragEntry, DragTrack, Loadable, Page};
 use crate::settings::{LIKED_SONGS_KEY, LibraryShelf as Filter, LibrarySort};
 use crate::theme::{self, Icon, Palette};
 
-const DEFAULT_ROW_HEIGHT: f32 = 60.0;
+const DEFAULT_ROW_HEIGHT: f32 = 52.0;
 const COMPACT_ROW_HEIGHT: f32 = 32.0;
 
 struct Entry {
@@ -814,22 +814,32 @@ fn nav_row(
     label: &str,
     active: bool,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
     if ui.is_rect_visible(rect) {
-        let color = if active || response.hovered() {
-            palette.text
-        } else {
-            palette.secondary
-        };
+        if active {
+            ui.painter().rect_filled(
+                rect,
+                CornerRadius::same(7),
+                theme::sidebar_selection(palette),
+            );
+        } else if response.hovered() {
+            ui.painter()
+                .rect_filled(rect, CornerRadius::same(7), theme::sidebar_hover(palette));
+        }
+        // A source list's icons wear the accent; its labels stay plain.
         let icon_rect =
-            Rect::from_center_size(pos2(rect.left() + 22.0, rect.center().y), Vec2::splat(22.0));
-        icon.image(color, 22.0).paint_at(ui, icon_rect);
+            Rect::from_center_size(pos2(rect.left() + 18.0, rect.center().y), Vec2::splat(17.0));
+        icon.image(palette.accent, 17.0).paint_at(ui, icon_rect);
         ui.painter().text(
-            pos2(rect.left() + 46.0, rect.center().y),
+            pos2(rect.left() + 36.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             label,
-            theme::bold(15.0),
-            color,
+            if active {
+                theme::medium(13.5)
+            } else {
+                theme::regular(13.5)
+            },
+            palette.text,
         );
     }
     response.widget_info(|| {
@@ -866,13 +876,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     {
         app.actions.push(Action::FocusSearch);
     }
-    ui.add_space(10.0);
-    ui.painter().hline(
-        ui.max_rect().x_range().shrink(4.0),
-        ui.cursor().top(),
-        egui::Stroke::new(1.0, palette.outline),
-    );
-    ui.add_space(10.0);
+    ui.add_space(14.0);
 
     let filter_id = egui::Id::new("sidebar-filter");
     let mut filter = ui
@@ -886,9 +890,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     let mut focus_search = false;
 
     ui.horizontal(|ui| {
-        ui.add_space(6.0);
-        theme::icon(ui, Icon::Library, 22.0, palette.secondary);
-        ui.add_space(2.0);
+        ui.add_space(8.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             if theme::icon_button(
@@ -957,15 +959,16 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 let heading = gettext(locale, "Library");
                 let room = ui.available_width() - 6.0;
-                let fits = [15.0, 14.0, 13.0].into_iter().find(|&size| {
+                // A section heading, as source lists label their groups.
+                let fits = [12.0, 11.5, 11.0].into_iter().find(|&size| {
                     ui.painter()
-                        .layout_no_wrap(heading.to_string(), theme::bold(size), palette.text)
+                        .layout_no_wrap(heading.to_string(), theme::bold(size), palette.secondary)
                         .size()
                         .x
                         <= room
                 });
                 if let Some(size) = fits {
-                    theme::text(ui, heading, theme::bold(size), palette.text);
+                    theme::text(ui, heading, theme::bold(size), palette.secondary);
                 }
             });
         });
@@ -1327,13 +1330,16 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 let mut cover_took_click = false;
                 if ui.is_rect_visible(rect) {
                     if active {
-                        ui.painter()
-                            .rect_filled(rect, CornerRadius::same(6), palette.surface);
+                        ui.painter().rect_filled(
+                            rect,
+                            CornerRadius::same(8),
+                            theme::sidebar_selection(&palette),
+                        );
                     } else if response.hovered() {
                         ui.painter().rect_filled(
                             rect,
-                            CornerRadius::same(6),
-                            palette.surface_hover.gamma_multiply(0.6),
+                            CornerRadius::same(8),
+                            theme::sidebar_hover(&palette),
                         );
                     }
                     if drop_hover {
@@ -1426,10 +1432,10 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     } else {
                         let cover_rect = Rect::from_center_size(
                             pos2(
-                                rect.left() + LIBRARY_ITEM_PADDING + indent + 22.0,
+                                rect.left() + LIBRARY_ITEM_PADDING + indent + 19.0,
                                 rect.center().y,
                             ),
-                            Vec2::splat(44.0),
+                            Vec2::splat(38.0),
                         );
                         if entry.liked {
                             liked_cover(ui, cover_rect, 6.0);
@@ -1439,12 +1445,12 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                                 &palette,
                                 entry.image.as_deref(),
                                 cover_rect,
-                                if entry.round { 22.0 } else { 6.0 },
+                                if entry.round { 19.0 } else { 6.0 },
                                 if entry.round { Icon::User } else { Icon::Music },
                                 Some(app.backend.art()),
                             );
                         }
-                        let text_left = cover_rect.right() + 12.0;
+                        let text_left = cover_rect.right() + 10.0;
                         let text_right = rect.right()
                             - if playing || pinned {
                                 28.0
@@ -1459,18 +1465,18 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                             &painter,
                             text_left,
                             text_right,
-                            rect.center().y - 9.0,
+                            rect.center().y - 8.0,
                             &entry.name,
-                            theme::medium(14.0),
+                            theme::regular(13.5),
                             name_color,
                         );
                         crate::bidi::paint_line(
                             &painter,
                             text_left,
                             text_right,
-                            rect.center().y + 10.0,
+                            rect.center().y + 9.0,
                             &entry.subtitle,
-                            theme::regular(12.5),
+                            theme::regular(11.5),
                             palette.secondary,
                         );
                         // Hovering the art offers to play right from here.

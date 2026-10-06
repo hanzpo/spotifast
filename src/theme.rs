@@ -36,6 +36,9 @@ pub struct Palette {
 
 impl Palette {
     pub fn dark() -> Self {
+        if cfg!(target_os = "macos") {
+            return Self::apple_dark();
+        }
         Self {
             dark: true,
             window: Color32::from_rgb(0x0f, 0x11, 0x14),
@@ -58,6 +61,9 @@ impl Palette {
     }
 
     pub fn light() -> Self {
+        if cfg!(target_os = "macos") {
+            return Self::apple_light();
+        }
         Self {
             dark: false,
             window: Color32::from_rgb(0xf8, 0xf9, 0xfb),
@@ -76,6 +82,55 @@ impl Palette {
             warning: Color32::from_rgb(0xb8, 0x7a, 0x14),
             overlay: Color32::from_rgb(0xff, 0xff, 0xff),
             shadow: Color32::from_black_alpha(50),
+        }
+    }
+
+    /// macOS's own dark appearance: its system greys, labels and the
+    /// accent colour chosen in System Settings.
+    fn apple_dark() -> Self {
+        let accent = system_accent().unwrap_or(Color32::from_rgb(0x0a, 0x84, 0xff));
+        Self {
+            dark: true,
+            window: Color32::from_rgb(0x1e, 0x1e, 0x1e),
+            panel: Color32::from_rgb(0x2a, 0x2a, 0x2c),
+            surface: Color32::from_rgb(0x2c, 0x2c, 0x2e),
+            surface_hover: Color32::from_rgb(0x3a, 0x3a, 0x3c),
+            surface_active: Color32::from_rgb(0x48, 0x48, 0x4a),
+            outline: Color32::from_rgb(0x38, 0x38, 0x3a),
+            text: Color32::from_rgb(0xf5, 0xf5, 0xf7),
+            secondary: Color32::from_rgb(0x98, 0x98, 0x9d),
+            dim: Color32::from_rgb(0x63, 0x63, 0x66),
+            accent,
+            accent_hover: lighten(accent, 0.12),
+            on_accent: Color32::WHITE,
+            danger: Color32::from_rgb(0xff, 0x45, 0x3a),
+            warning: Color32::from_rgb(0xff, 0xd6, 0x0a),
+            overlay: Color32::from_rgb(0x2c, 0x2c, 0x2e),
+            shadow: Color32::from_black_alpha(120),
+        }
+    }
+
+    /// macOS's own light appearance.
+    fn apple_light() -> Self {
+        let accent = system_accent().unwrap_or(Color32::from_rgb(0x00, 0x7a, 0xff));
+        Self {
+            dark: false,
+            window: Color32::WHITE,
+            panel: Color32::from_rgb(0xf5, 0xf5, 0xf7),
+            surface: Color32::from_rgb(0xf2, 0xf2, 0xf7),
+            surface_hover: Color32::from_rgb(0xe5, 0xe5, 0xea),
+            surface_active: Color32::from_rgb(0xd1, 0xd1, 0xd6),
+            outline: Color32::from_rgb(0xd8, 0xd8, 0xdc),
+            text: Color32::from_rgb(0x1d, 0x1d, 0x1f),
+            secondary: Color32::from_rgb(0x6e, 0x6e, 0x73),
+            dim: Color32::from_rgb(0xae, 0xae, 0xb2),
+            accent,
+            accent_hover: lighten(accent, -0.10),
+            on_accent: Color32::WHITE,
+            danger: Color32::from_rgb(0xff, 0x3b, 0x30),
+            warning: Color32::from_rgb(0xc9, 0x34, 0x00),
+            overlay: Color32::WHITE,
+            shadow: Color32::from_black_alpha(45),
         }
     }
 
@@ -98,6 +153,30 @@ impl Palette {
         };
         Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
     }
+}
+
+/// The accent colour from System Settings, read once per process. Tests
+/// keep the default, so they do not depend on the machine.
+fn system_accent() -> Option<Color32> {
+    #[cfg(all(target_os = "macos", not(test)))]
+    {
+        static ACCENT: std::sync::OnceLock<Option<Color32>> = std::sync::OnceLock::new();
+        *ACCENT.get_or_init(|| {
+            crate::mac_glass::accent_color().map(|[r, g, b]| Color32::from_rgb(r, g, b))
+        })
+    }
+    #[cfg(not(all(target_os = "macos", not(test))))]
+    {
+        None
+    }
+}
+
+/// `color` moved toward white by `amount`, or toward black when negative.
+fn lighten(color: Color32, amount: f32) -> Color32 {
+    let target = if amount >= 0.0 { 255.0 } else { 0.0 };
+    let amount = amount.abs();
+    let channel = |value: u8| (f32::from(value) + (target - f32::from(value)) * amount) as u8;
+    Color32::from_rgb(channel(color.r()), channel(color.g()), channel(color.b()))
 }
 
 impl fastframe_theme::Palette for Palette {
@@ -185,8 +264,70 @@ pub fn catalog_detail(
     }
 }
 
-pub const RADIUS: u8 = 8;
-pub const RADIUS_SMALL: u8 = 4;
+/// A toolbar control's glass: a translucent body, a rim that catches the
+/// light along its upper edge, and on a light window a soft shadow.
+pub fn paint_glass(painter: &egui::Painter, rect: egui::Rect, palette: &Palette, hovered: bool) {
+    let radius = CornerRadius::same((rect.height() / 2.0).round() as u8);
+    if !palette.dark {
+        painter.add(
+            egui::epaint::Shadow {
+                offset: [0, 1],
+                blur: 6,
+                spread: 0,
+                color: Color32::from_black_alpha(28),
+            }
+            .as_shape(rect, radius),
+        );
+    }
+    let body = match (palette.dark, hovered) {
+        (true, false) => Color32::from_white_alpha(16),
+        (true, true) => Color32::from_white_alpha(28),
+        (false, false) => Color32::from_white_alpha(235),
+        (false, true) => Color32::from_rgb(0xf2, 0xf2, 0xf4),
+    };
+    painter.rect_filled(rect, radius, body);
+    let rim = if palette.dark {
+        Color32::from_white_alpha(22)
+    } else {
+        Color32::from_black_alpha(16)
+    };
+    painter.rect_stroke(
+        rect,
+        radius,
+        Stroke::new(1.0, rim),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// The fill of a selected row in the sidebar: on macOS's glass a
+/// translucent pill, as AppKit draws a source list's selection.
+pub fn sidebar_selection(palette: &Palette) -> Color32 {
+    if cfg!(target_os = "macos") {
+        if palette.dark {
+            Color32::from_white_alpha(30)
+        } else {
+            Color32::from_black_alpha(22)
+        }
+    } else {
+        palette.surface
+    }
+}
+
+/// The fill of a sidebar row under the pointer.
+pub fn sidebar_hover(palette: &Palette) -> Color32 {
+    if cfg!(target_os = "macos") {
+        if palette.dark {
+            Color32::from_white_alpha(14)
+        } else {
+            Color32::from_black_alpha(10)
+        }
+    } else {
+        palette.surface_hover.gamma_multiply(0.6)
+    }
+}
+
+pub const RADIUS: u8 = 10;
+pub const RADIUS_SMALL: u8 = 6;
 pub const ROW_HEIGHT: f32 = 56.0;
 pub const COMPACT_ROW_HEIGHT: f32 = 48.0;
 /// The compact track list: one line, no cover.
@@ -692,7 +833,43 @@ pub fn soft_button_dismiss(
 /// a row of them before drawing it.
 pub fn soft_button_width(ui: &egui::Ui, label: &str) -> f32 {
     let galley = crate::bidi::layout_line(ui.painter(), label, medium(13.0), Color32::WHITE);
-    galley.size().x + 24.0
+    galley.size().x + 2.0 * SOFT_PADDING.x
+}
+
+/// A soft button's padding: macOS's smaller controls, or the roomier pill.
+const SOFT_PADDING: Vec2 = if cfg!(target_os = "macos") {
+    Vec2::new(11.0, 5.0)
+} else {
+    Vec2::new(12.0, 7.0)
+};
+
+/// A soft button's fill. On macOS a translucent tint that reads on glass
+/// and page alike, and the accent when chosen.
+fn soft_fill(palette: &Palette, active: bool, hovered: bool) -> (Color32, Color32) {
+    if cfg!(target_os = "macos") {
+        if active {
+            return (palette.accent, palette.on_accent);
+        }
+        let alpha = match (palette.dark, hovered) {
+            (true, false) => 22,
+            (true, true) => 36,
+            (false, false) => 12,
+            (false, true) => 22,
+        };
+        let fill = if palette.dark {
+            Color32::from_white_alpha(alpha)
+        } else {
+            Color32::from_black_alpha(alpha)
+        };
+        return (fill, palette.text);
+    }
+    if active {
+        (palette.text, palette.window)
+    } else if hovered {
+        (palette.surface_hover, palette.text)
+    } else {
+        (palette.surface, palette.text)
+    }
 }
 
 fn soft_button_inner(
@@ -704,11 +881,11 @@ fn soft_button_inner(
     dismissible: bool,
 ) -> (Response, bool) {
     let font = medium(13.0);
-    let color = if active { palette.window } else { palette.text };
+    let (_, color) = soft_fill(palette, active, false);
     let galley = crate::bidi::layout_line(ui.painter(), label, font, color);
     let icon_size = 15.0;
     let icon_width = if icon.is_some() { icon_size + 6.0 } else { 0.0 };
-    let padding = Vec2::new(12.0, 7.0);
+    let padding = SOFT_PADDING;
     let size = Vec2::new(galley.size().x + icon_width, galley.size().y) + padding * 2.0;
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     response.widget_info(|| {
@@ -740,13 +917,7 @@ fn soft_button_inner(
         .is_some_and(|dismiss| dismiss.hovered() || dismiss.has_focus());
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered() || over_dismiss;
-        let fill = if active {
-            palette.text
-        } else if hovered {
-            palette.surface_hover
-        } else {
-            palette.surface
-        };
+        let (fill, _) = soft_fill(palette, active, hovered);
         ui.painter().rect_filled(rect, rect.height() / 2.0, fill);
         let mut x = rect.left() + padding.x;
         if let Some(icon) = icon {

@@ -101,18 +101,24 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
             ui.set_width(width);
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.add_space(cover_size * 0.08);
-            theme::text(ui, hero.kind.as_ref(), theme::medium(12.5), palette.text);
-            let mut size = if cover_size > 200.0 { 56.0 } else { 40.0 };
+            theme::text(
+                ui,
+                hero.kind.as_ref(),
+                theme::medium(12.5),
+                palette.secondary,
+            );
+            // A title in macOS's large-title range, not a poster's.
+            let mut size = if cover_size > 200.0 { 34.0 } else { 28.0 };
             loop {
                 let galley = ui.painter().layout_no_wrap(
                     hero.title.to_string(),
                     theme::bold(size),
                     palette.text,
                 );
-                if galley.size().x <= width || size <= 22.0 {
+                if galley.size().x <= width || size <= 20.0 {
                     break;
                 }
-                size -= 6.0;
+                size -= 4.0;
             }
             theme::text(ui, hero.title, theme::bold(size), palette.text);
             if let Some(description) = &hero.description
