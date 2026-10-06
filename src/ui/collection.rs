@@ -1953,22 +1953,14 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
 
 /// `1,234 songs` in a playlist, album or Liked Songs byline.
 fn song_count(locale: Locale, count: u32) -> String {
-    ngettext(
-        locale,
-        // Translators: {count} is a number of songs.
-        "{count} song",
-        "{count} songs",
-        count,
-    )
-    .replace("{count}", &util::format_count(count as u64))
+    ngettext(locale, "{count} song", "{count} songs", count)
+        .replace("{count}", &util::format_count(count as u64))
 }
 
 /// `1,234 songs, 2 hr 13 min` once the whole list is known.
 pub(super) fn songs_and_duration(locale: Locale, count: u32, duration_ms: u64) -> String {
     ngettext(
         locale,
-        // Translators: {count} is a number of songs and {duration} their total
-        // length, such as "2 hr 13 min".
         "{count} song, {duration}",
         "{count} songs, {duration}",
         count,
@@ -1981,19 +1973,12 @@ pub(super) fn songs_and_duration(locale: Locale, count: u32, duration_ms: u64) -
 /// are one or two known names, by count otherwise.
 fn contributors_text(locale: Locale, named: &[String], others: usize) -> String {
     match named {
-        [name] if others == 1 => {
-            // Translators: {name} is the name of someone who added songs to the playlist.
-            gettext(locale, "with {name}").replace("{name}", name)
-        }
-        [first, second] if others == 2 => {
-            // Translators: {first} and {second} are names of people who added songs.
-            gettext(locale, "with {first} and {second}")
-                .replace("{first}", first)
-                .replace("{second}", second)
-        }
+        [name] if others == 1 => gettext(locale, "with {name}").replace("{name}", name),
+        [first, second] if others == 2 => gettext(locale, "with {first} and {second}")
+            .replace("{first}", first)
+            .replace("{second}", second),
         _ => ngettext(
             locale,
-            // Translators: {count} is how many other people added songs to the playlist.
             "and {count} other",
             "and {count} others",
             u32::try_from(others).unwrap_or(u32::MAX),

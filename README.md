@@ -39,9 +39,8 @@ is Spotifast's sibling. Both are built on
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull
 request. To look at the interface without a Spotify account, run
-`cargo run --features demo -- --demo`. Translations live in `assets/i18n/`;
-see [Translating Spotifast](docs/_reference/translating.md). Release
-packaging is described in [PACKAGING.md](PACKAGING.md).
+`cargo run --features demo -- --demo`. Release packaging is described in
+[PACKAGING.md](PACKAGING.md).
 
 ## Acknowledgements
 

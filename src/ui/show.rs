@@ -99,14 +99,8 @@ fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Sho
     let mut byline = vec![(show.publisher.clone(), None)];
     if let Some(total) = show.total_episodes {
         byline.push((
-            ngettext(
-                locale,
-                // Translators: {count} is the number of episodes of a podcast.
-                "{count} episode",
-                "{count} episodes",
-                total,
-            )
-            .replace("{count}", &total.to_string()),
+            ngettext(locale, "{count} episode", "{count} episodes", total)
+                .replace("{count}", &total.to_string()),
             None,
         ));
     }
@@ -335,7 +329,6 @@ pub fn episode_row(
         });
     match remaining {
         Some(left) => meta.push(
-            // Translators: {duration} is the time left in an episode, such as "12 min".
             gettext(locale, "{duration} left")
                 .replace("{duration}", &util::format_episode_ms(app.locale, left)),
         ),

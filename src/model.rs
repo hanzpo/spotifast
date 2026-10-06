@@ -1089,8 +1089,6 @@ pub enum Action {
     ToggleDevicesPopup,
     SettingsChanged,
     SetTheme(crate::settings::ThemeChoice),
-    /// Draw the interface in this language from the next frame on.
-    SetLanguage(crate::settings::LanguageChoice),
     OpenThemesFolder,
     SetCustomTheme(String),
     ReloadThemes,

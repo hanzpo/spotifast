@@ -6,7 +6,7 @@ use crate::api::models::pick_image;
 use crate::app::App;
 use crate::i18n::{gettext, pgettext};
 use crate::model::{Action, Dialog};
-use crate::settings::{LanguageChoice, ProxyMode, ThemeChoice};
+use crate::settings::{ProxyMode, ThemeChoice};
 use crate::theme::{self, Icon, Palette};
 
 use super::widgets;
@@ -260,7 +260,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         {
                             theme::text(
                                 ui,
-                                // Translators: {username} is the Spotify account's user name.
                                 gettext(locale, "Connected as {username}")
                                     .replace("{username}", &username),
                                 theme::regular(12.0),
@@ -387,7 +386,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let apply_playback_note = gettext(locale, "Restart local playback to apply these settings.");
     let playback_rows = [
         RowText::new(
-            // Translators: {status} is a playback state such as Ready or Not set up.
             gettext(locale, "Status: {status}").replace("{status}", &status),
             detail,
         ),
@@ -728,13 +726,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
         }),
         RowText::new(
-            gettext(locale, "Language"),
-            gettext(
-                locale,
-                "System follows your computer's language. Untranslated text stays in English.",
-            ),
-        ),
-        RowText::new(
             accent_from_art.clone(),
             gettext(
                 locale,
@@ -887,14 +878,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &needle,
                 &appearance,
                 &appearance_rows[1],
-                |ui| language_picker(app, ui),
-            );
-            filtered_row(
-                ui,
-                &palette,
-                &needle,
-                &appearance,
-                &appearance_rows[2],
                 |ui| {
                     if widgets::switch(
                         ui,
@@ -913,7 +896,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &palette,
                 &needle,
                 &appearance,
-                &appearance_rows[3],
+                &appearance_rows[2],
                 |ui| {
                     if widgets::switch(
                         ui,
@@ -932,7 +915,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &palette,
                 &needle,
                 &appearance,
-                &appearance_rows[4],
+                &appearance_rows[3],
                 |ui| {
                     if widgets::switch(
                         ui,
@@ -951,7 +934,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &palette,
                 &needle,
                 &appearance,
-                &appearance_rows[5],
+                &appearance_rows[4],
                 |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -982,7 +965,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &palette,
                     &needle,
                     &appearance,
-                    &appearance_rows[6],
+                    &appearance_rows[5],
                     |ui| {
                         if widgets::switch(
                             ui,
@@ -1003,7 +986,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &palette,
                     &needle,
                     &appearance,
-                    &appearance_rows[7],
+                    &appearance_rows[6],
                     |ui| {
                         let mut custom = app.settings.custom_titlebar;
                         if widgets::switch(ui, &palette, &custom_titlebar, &mut custom).changed() {
@@ -1120,9 +1103,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             format!(
                 "{} {} {} dB",
                 gettext(locale, "Presets"),
-                // Translators: a search keyword for the equalizer's preamplifier slider.
                 gettext(locale, "Preamp"),
-                // Translators: a search keyword for the equalizer's frequency band sliders.
                 gettext(locale, "Bands"),
             ),
             crate::eq::PRESETS
@@ -1172,7 +1153,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     if eq_slider(
                         ui,
                         &palette,
-                        // Translators: short label under the equalizer's preamplifier slider.
                         &pgettext(locale, "equalizer", "Pre"),
                         &mut preamp,
                         on,
@@ -1194,13 +1174,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let storage_rows = [
         RowText::new(
             gettext(locale, "Artwork cache"),
-            // Translators: {folder} is the path of a cache folder.
             gettext(locale, "Stored in {folder}")
                 .replace("{folder}", &app.dirs.art_cache_dir().display().to_string()),
         ),
         RowText::new(
             audio_cache.clone(),
-            // Translators: {folder} is the path of a cache folder.
             gettext(locale, "Stored in {folder}").replace(
                 "{folder}",
                 &app.dirs.audio_cache_dir().display().to_string(),
@@ -1210,7 +1188,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             gettext(locale, "Play history"),
             gettext(
                 locale,
-                // Translators: {file} is the path of the play history file.
                 "Tracks played here are stored in {file}. This file is never uploaded.",
             )
             .replace("{file}", &app.dirs.history_file().display().to_string()),
@@ -1318,7 +1295,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::Search,
-            // Translators: {query} is the text typed into the settings search field.
             &gettext(locale, "No settings for “{query}”").replace("{query}", &needle),
             &gettext(locale, "Try fewer words, or check the spelling."),
         );
@@ -1332,46 +1308,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// A band's frequency the short way: 60, 170, 1K, 16K.
-/// The interface language: System first, then each language by its own name,
-/// so a reader can find theirs whatever language the app is showing.
-fn language_picker(app: &mut App, ui: &mut egui::Ui) {
-    let locale = app.locale;
-    let system = pgettext(locale, "language", "System");
-    let current = app.settings.language;
-    let selected = match current {
-        LanguageChoice::System => system.clone(),
-        LanguageChoice::Locale(chosen) => chosen.native_name().into(),
-    };
-    let response = egui::ComboBox::from_id_salt("interface_language")
-        .selected_text(selected.as_ref())
-        .width(200.0_f32.min(ui.available_width()))
-        // As many languages as a menu holds before it scrolls, not five.
-        .height(1000.0)
-        .show_ui(ui, |ui| {
-            let choices = std::iter::once((LanguageChoice::System, system.clone())).chain(
-                crate::i18n::LOCALES
-                    .iter()
-                    .map(|&each| (LanguageChoice::Locale(each), each.native_name().into())),
-            );
-            for (choice, label) in choices {
-                if ui
-                    .selectable_label(current == choice, label.as_ref())
-                    .clicked()
-                    && current != choice
-                {
-                    app.actions.push(Action::SetLanguage(choice));
-                }
-            }
-        });
-    let name = gettext(locale, "Language");
-    response.response.widget_info(|| {
-        let mut info =
-            egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, ui.is_enabled(), name.as_ref());
-        info.current_text_value = Some(selected.to_string());
-        info
-    });
-}
-
 fn hertz(hz: f32) -> String {
     if hz >= 1000.0 {
         format!("{}K", (hz / 1000.0).round() as u32)

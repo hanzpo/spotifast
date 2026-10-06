@@ -70,10 +70,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     );
                     ui.add_space(8.0);
                     let body = if owned {
-                        // Translators: {name} is a playlist name.
                         gettext(locale, "Delete “{name}”? You can recover it from Spotify for 90 days.")
                     } else {
-                        // Translators: {name} is a playlist name.
                         gettext(locale, "“{name}” will no longer appear in Your Library.")
                     }
                     .replace("{name}", &name);
@@ -247,48 +245,32 @@ fn duplicate_message(
         .collect();
     let one_item = items.len() == 1;
     let message = match names.as_slice() {
-        [] if one_item => {
-            // Translators: {playlist} is a playlist name.
-            gettext(
-                locale,
-                "This song is already in “{playlist}”. Add it again?",
-            )
-        }
-        [] => {
-            // Translators: {playlist} is a playlist name.
-            gettext(
-                locale,
-                "This song is already in “{playlist}”. Add them anyway?",
-            )
-        }
-        [name] if one_item => {
-            // Translators: {name} is a song name and {playlist} a playlist name.
-            gettext(locale, "“{name}” is already in “{playlist}”. Add it again?")
-                .replace("{name}", name)
-                .into()
-        }
-        [name] => {
-            // Translators: {name} is a song name and {playlist} a playlist name.
-            gettext(
-                locale,
-                "“{name}” is already in “{playlist}”. Add them anyway?",
-            )
+        [] if one_item => gettext(
+            locale,
+            "This song is already in “{playlist}”. Add it again?",
+        ),
+        [] => gettext(
+            locale,
+            "This song is already in “{playlist}”. Add them anyway?",
+        ),
+        [name] if one_item => gettext(locale, "“{name}” is already in “{playlist}”. Add it again?")
             .replace("{name}", name)
-            .into()
-        }
-        [first, second] => {
-            // Translators: {first} and {second} are song names, {playlist} a playlist name.
-            gettext(
-                locale,
-                "“{first}” and “{second}” are already in “{playlist}”. Add them anyway?",
-            )
-            .replace("{first}", first)
-            .replace("{second}", second)
-            .into()
-        }
+            .into(),
+        [name] => gettext(
+            locale,
+            "“{name}” is already in “{playlist}”. Add them anyway?",
+        )
+        .replace("{name}", name)
+        .into(),
+        [first, second] => gettext(
+            locale,
+            "“{first}” and “{second}” are already in “{playlist}”. Add them anyway?",
+        )
+        .replace("{first}", first)
+        .replace("{second}", second)
+        .into(),
         [first, second, rest @ ..] => ngettext(
             locale,
-            // Translators: {first} and {second} are song names, {count} is how many more songs are already in the playlist, and {playlist} is a playlist name.
             "“{first}”, “{second}”, and {count} more are already in “{playlist}”. Add them anyway?",
             "“{first}”, “{second}”, and {count} more are already in “{playlist}”. Add them anyway?",
             rest.len() as u32,
@@ -384,7 +366,6 @@ fn create_playlist(app: &mut App, ui: &mut egui::Ui) {
             ui,
             ngettext(
                 locale,
-                // Translators: {count} is the number of songs.
                 "{count} song will be added.",
                 "{count} songs will be added.",
                 count as u32,

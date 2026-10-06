@@ -220,23 +220,19 @@ fn featuring(locale: Locale, songs: &[Track]) -> Option<String> {
     }
     match names.as_slice() {
         [] => None,
-        // Translators: {first} is an artist name.
         [first] => Some(gettext(locale, "With {first}").replace("{first}", first)),
         [first, second] => Some(
-            // Translators: {first} and {second} are artist names.
             gettext(locale, "With {first} and {second}")
                 .replace("{first}", first)
                 .replace("{second}", second),
         ),
         [first, second, third] => Some(
-            // Translators: {first}, {second} and {third} are artist names.
             gettext(locale, "With {first}, {second} and {third}")
                 .replace("{first}", first)
                 .replace("{second}", second)
                 .replace("{third}", third),
         ),
         [first, second, third, ..] => Some(
-            // Translators: {first}, {second} and {third} are artist names; more follow.
             gettext(locale, "With {first}, {second}, {third} and more")
                 .replace("{first}", first)
                 .replace("{second}", second)

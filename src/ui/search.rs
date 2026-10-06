@@ -62,7 +62,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::Search,
-            // Translators: {query} is the text the user searched for.
             &gettext(app.locale, "No results for “{query}”")
                 .replace("{query}", &app.search.committed),
             &gettext(app.locale, "Check the spelling, or try fewer words."),
@@ -183,15 +182,12 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                     ui,
                     pick_image(&album.images, 640),
                     &album.name,
-                    TopResultSubtitle::Text(
-                        // Translators: {artists} is the album's artist names.
-                        &gettext(locale, "Album • {artists}").replace(
-                            "{artists}",
-                            &crate::api::models::join_names(
-                                album.artists.iter().map(|a| a.name.as_str()),
-                            ),
+                    TopResultSubtitle::Text(&gettext(locale, "Album • {artists}").replace(
+                        "{artists}",
+                        &crate::api::models::join_names(
+                            album.artists.iter().map(|a| a.name.as_str()),
                         ),
-                    ),
+                    )),
                     false,
                     Some(album.uri.clone()),
                     Page::Album(album.id.clone()),
@@ -210,7 +206,6 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                     pick_image(&playlist.images, 640),
                     &playlist.name,
                     TopResultSubtitle::Text(
-                        // Translators: {owner} is the name of the playlist's owner.
                         &gettext(locale, "Playlist • {owner}")
                             .replace("{owner}", playlist.owner_name()),
                     ),
@@ -235,7 +230,6 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                     pick_image(&show.images, 640),
                     &show.name,
                     TopResultSubtitle::Text(
-                        // Translators: {publisher} is the podcast's publisher.
                         &gettext(locale, "Podcast • {publisher}")
                             .replace("{publisher}", &show.publisher),
                     ),
@@ -345,7 +339,6 @@ fn top_result(
                 child.spacing_mut().item_spacing.x = 0.0;
                 theme::text(
                     &mut child,
-                    // Translators: Precedes the song's artist names, which follow as links.
                     gettext(app.locale, "Song • ").as_ref(),
                     theme::regular(13.5),
                     palette.secondary,
@@ -598,7 +591,6 @@ fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models
         app,
         pick_image(&playlist.images, 640),
         &playlist.name,
-        // Translators: {owner} is the name of the playlist's owner.
         &gettext(app.locale, "By {owner}").replace("{owner}", playlist.owner_name()),
         widgets::CardCover::square(playing_here),
     );

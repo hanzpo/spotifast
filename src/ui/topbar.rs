@@ -271,7 +271,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             let device_galley = app.now_playing().filter(|now| !now.local).map(|now| {
                 let label = match now.device_name {
                     Some(device) => {
-                        // Translators: {device} is the name of the device playing the music.
                         gettext(locale, "Playing on {device}").replace("{device}", &device)
                     }
                     None => gettext(locale, "Playing on another device").into_owned(),

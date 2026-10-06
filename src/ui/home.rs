@@ -234,7 +234,6 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                     .map(crate::util::strip_html)
                     .filter(|d| !d.is_empty())
                     .unwrap_or_else(|| {
-                        // Translators: {owner} is the name of the playlist's owner.
                         gettext(app.locale, "By {owner}").replace("{owner}", playlist.owner_name())
                     });
                 let playing_here = app.playing_context_uri().as_deref()
@@ -468,7 +467,6 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
             for (show, episode, reason) in &episodes {
                 let subtitle = match reason {
                     EpisodeReason::Continue { left_ms } => {
-                        // Translators: {time} is the time left in an episode, such as 12 min; {show} is the podcast's name.
                         gettext(app.locale, "{time} left • {show}")
                             .replace(
                                 "{time}",
@@ -477,7 +475,6 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
                             .replace("{show}", &show.name)
                     }
                     EpisodeReason::New => {
-                        // Translators: {show} is the podcast's name.
                         gettext(app.locale, "New • {show}").replace("{show}", &show.name)
                     }
                 };

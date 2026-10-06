@@ -822,11 +822,6 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     page.items.revision += 1;
                 }
             }
-            "german" => {
-                app.settings.language =
-                    crate::settings::LanguageChoice::Locale(crate::i18n::Locale::German);
-                app.locale = crate::i18n::Locale::German;
-            }
             "personal-app" => app.dialog = Some(Dialog::PersonalAppIntro),
             "many-devices" => {
                 app.show_devices = true;
@@ -1169,7 +1164,8 @@ mod tests {
                 _ => {}
             }
         }
-        for locale in [crate::i18n::Locale::English, crate::i18n::Locale::German] {
+        {
+            let locale = crate::i18n::Locale::English;
             for width in [210.0, 250.0, 420.0] {
                 let (ctx, mut app) = accessible_app("library-heading");
                 app.locale = locale;
@@ -1390,11 +1386,11 @@ mod tests {
     }
 
     #[test]
-    fn translated_sidebar_keeps_keyboard_navigation_and_accessible_names() {
+    fn sidebar_keeps_keyboard_navigation_and_accessible_names() {
         use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
         use egui::accesskit::{Action as AccessibleAction, Role};
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-sidebar-{locale:?}"));
             app.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
@@ -1460,12 +1456,12 @@ mod tests {
     }
 
     #[test]
-    fn translated_player_bar_keeps_control_identity_and_keyboard_actions() {
+    fn player_bar_keeps_control_identity_and_keyboard_actions() {
         use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-player-{locale:?}"));
             accessible_frame(&ctx, &mut app, vec![]);
             let english = accessible_frame(&ctx, &mut app, vec![]);
@@ -1543,12 +1539,12 @@ mod tests {
     }
 
     #[test]
-    fn translated_player_bar_labels_follow_control_state_and_empty_playback() {
+    fn player_bar_labels_follow_control_state_and_empty_playback() {
         use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-player-state-{locale:?}"));
             app.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
@@ -1590,12 +1586,12 @@ mod tests {
     }
 
     #[test]
-    fn translated_queue_controls_preserve_manual_and_context_rows() {
+    fn queue_controls_preserve_manual_and_context_rows() {
         use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-queue-{locale:?}"));
             app.locale = locale;
             app.show_queue_panel = true;
@@ -1661,12 +1657,12 @@ mod tests {
     }
 
     #[test]
-    fn translated_lyrics_controls_keep_follow_retry_and_fullscreen_actions() {
+    fn lyrics_controls_keep_follow_retry_and_fullscreen_actions() {
         use crate::i18n::{Locale, gettext, pgettext};
-        use clap::ValueEnum;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-lyrics-{locale:?}"));
             app.locale = locale;
             app.show_lyrics_panel = true;
@@ -1741,10 +1737,10 @@ mod tests {
     }
 
     #[test]
-    fn translated_panel_states_keep_original_lyrics_and_failure_details() {
+    fn panel_states_keep_original_lyrics_and_failure_details() {
         use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
-        for &locale in Locale::value_variants() {
+        {
+            let locale = Locale::English;
             let (ctx, mut app) = accessible_app(&format!("translated-panel-states-{locale:?}"));
             app.locale = locale;
             app.show_lyrics_panel = true;
@@ -2128,12 +2124,10 @@ mod tests {
     }
 
     #[test]
-    fn library_folder_accessibility_labels_follow_the_locale() {
-        use crate::i18n::Locale;
+    fn library_folder_accessibility_labels_say_whether_they_are_collapsed() {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart};
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("library-folder-labels");
-        app.locale = Locale::German;
         app.settings.sidebar_grid = true;
         app.rootlist = vec![
             FolderStart {
@@ -2150,17 +2144,15 @@ mod tests {
         app.collapsed_folders = vec!["weekend".into()];
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        accessible_node(&tree, "Focus, Ordner, ausgeklappt", Role::Button);
-        accessible_node(&tree, "Weekend, Ordner, eingeklappt", Role::Button);
+        accessible_node(&tree, "Focus, folder, expanded", Role::Button);
+        accessible_node(&tree, "Weekend, folder, collapsed", Role::Button);
         app.backend.shutdown();
     }
 
     #[test]
-    fn library_context_menu_labels_follow_the_locale() {
-        use crate::i18n::{Locale, gettext};
+    fn library_context_menu_offers_pin_and_unpin() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-menu-locale");
-        app.locale = Locale::German;
         app.settings.liked_songs_pinned = false;
         let row = |tree: &egui::accesskit::TreeUpdate, label: &str| {
             let bounds = tree
@@ -2182,15 +2174,15 @@ mod tests {
         };
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        let liked = row(&tree, &gettext(Locale::German, "Liked Songs")).center();
+        let liked = row(&tree, "Liked Songs").center();
         accessible_frame(
             &ctx,
             &mut app,
             pointer_click(liked, egui::PointerButton::Secondary),
         );
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        accessible_node(&tree, &gettext(Locale::German, "Play"), Role::Button);
-        let pin = accessible_node(&tree, &gettext(Locale::German, "Pin to top"), Role::Button);
+        accessible_node(&tree, "Play", Role::Button);
+        let pin = accessible_node(&tree, "Pin to top", Role::Button);
         accessible_frame(
             &ctx,
             &mut app,
@@ -2198,14 +2190,14 @@ mod tests {
         );
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        let liked = row(&tree, &gettext(Locale::German, "Liked Songs")).center();
+        let liked = row(&tree, "Liked Songs").center();
         accessible_frame(
             &ctx,
             &mut app,
             pointer_click(liked, egui::PointerButton::Secondary),
         );
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        accessible_node(&tree, &gettext(Locale::German, "Unpin"), Role::Button);
+        accessible_node(&tree, "Unpin", Role::Button);
         app.backend.shutdown();
     }
 
@@ -4350,86 +4342,6 @@ mod tests {
         text
     }
 
-    #[test]
-    fn choosing_a_language_redraws_the_interface_at_once_and_is_saved() {
-        use crate::i18n::{Locale, gettext};
-        use crate::settings::LanguageChoice;
-        use egui::accesskit::Role;
-        let (ctx, mut app) = accessible_app("language-picker");
-        app.open(Page::Settings);
-        ctx.data_mut(|data| {
-            data.insert_temp(egui::Id::new("settings-filter"), "Language".to_string())
-        });
-        assert_eq!(app.settings.language, LanguageChoice::System);
-        for _ in 0..3 {
-            view_frame(&ctx, &mut app, vec![], App::frame_ui);
-        }
-        let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
-        let picker = sidebar_text(&painted, "System").center();
-        view_frame(
-            &ctx,
-            &mut app,
-            pointer_click(picker, egui::PointerButton::Primary),
-            App::frame_ui,
-        );
-        let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
-        let menu_y = |name: &str| {
-            painted
-                .iter()
-                .filter(|(text, rect)| text == name && rect.center().y > picker.y)
-                .map(|(_, rect)| rect.center().y)
-                .next()
-        };
-        // System first, then each language under its own name. The menu
-        // scrolls, so only the entries above its fold are painted.
-        let mut previous = menu_y("System").expect("System heads the menu");
-        let shown = crate::i18n::LOCALES
-            .iter()
-            .map_while(|locale| menu_y(locale.native_name()))
-            .inspect(|&y| {
-                assert!(previous < y, "languages are listed in order");
-                previous = y;
-            })
-            .count();
-        assert!(shown >= 8, "only {shown} languages fit before scrolling");
-        view_frame(
-            &ctx,
-            &mut app,
-            pointer_click(
-                sidebar_text(&painted, "Español").center(),
-                egui::PointerButton::Primary,
-            ),
-            App::frame_ui,
-        );
-        assert_eq!(
-            app.settings.language,
-            LanguageChoice::Locale(Locale::Spanish)
-        );
-        assert_eq!(app.locale, Locale::Spanish);
-        // The English search text no longer matches the Spanish row.
-        crate::ui::settings::clear_search(&ctx);
-        accessible_frame(&ctx, &mut app, vec![]);
-        let tree = accessible_frame(&ctx, &mut app, vec![]);
-        accessible_node(&tree, &gettext(Locale::Spanish, "Home"), Role::Button);
-        let id = accessible_node(&tree, &gettext(Locale::Spanish, "Language"), Role::ComboBox);
-        let node = &tree
-            .nodes
-            .iter()
-            .find(|(node_id, _)| *node_id == id)
-            .unwrap()
-            .1;
-        assert_eq!(node.value(), Some("Español"));
-
-        app.apply(Action::SetLanguage(LanguageChoice::System), &ctx);
-        assert_eq!(app.settings.language, LanguageChoice::System);
-        assert_eq!(app.locale, Locale::English, "tests read an English system");
-        let tree = accessible_frame(&ctx, &mut app, vec![]);
-        accessible_node(&tree, "Home", Role::Button);
-        app.backend.shutdown();
-    }
-
-    /// Beside the themes folder, a button opens the guide to writing a
-    /// theme.
     #[test]
     fn the_theme_row_links_to_the_guide_to_making_a_theme() {
         // Only the page is drawn, so the click's action is collected and

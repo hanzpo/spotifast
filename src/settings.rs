@@ -67,47 +67,6 @@ pub struct HomeSettings {
     pub recommendations: HomeShelfSettings,
 }
 
-/// The interface language: the operating system's, or one chosen in Settings.
-///
-/// Stored as `"system"` or a locale tag such as `"es"` or `"pt-BR"`. A file
-/// without the field follows the system; a tag this version does not carry
-/// also follows the system, rather than making the whole file unreadable.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LanguageChoice {
-    #[default]
-    System,
-    Locale(crate::i18n::Locale),
-}
-
-impl LanguageChoice {
-    /// The locale the interface is drawn in.
-    pub fn resolve(self) -> crate::i18n::Locale {
-        match self {
-            Self::System => crate::i18n::Locale::from_system(),
-            Self::Locale(locale) => locale,
-        }
-    }
-}
-
-impl Serialize for LanguageChoice {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(match self {
-            Self::System => "system",
-            Self::Locale(locale) => locale.tag(),
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for LanguageChoice {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        Ok(value
-            .as_str()
-            .and_then(crate::i18n::Locale::from_tag)
-            .map_or(Self::System, Self::Locale))
-    }
-}
-
 impl ThemeChoice {
     pub const ALL: [ThemeChoice; 3] = [Self::System, Self::Light, Self::Dark];
 
@@ -198,8 +157,6 @@ pub struct Settings {
     pub audio_cache: bool,
     pub audio_cache_mb: u64,
     pub theme: ThemeChoice,
-    /// The interface language; older files without it follow the system.
-    pub language: LanguageChoice,
     /// Filename selected from the local themes directory.
     pub custom_theme: Option<String>,
     /// Last accepted appearance, retained if its source file becomes unavailable.
@@ -334,7 +291,6 @@ impl Default for Settings {
             audio_cache: true,
             audio_cache_mb: 1024,
             theme: ThemeChoice::System,
-            language: LanguageChoice::System,
             custom_theme: None,
             custom_theme_cache: None,
             system_theme_cache: None,
@@ -811,63 +767,6 @@ mod tests {
     }
 
     #[test]
-    fn language_follows_the_system_unless_a_known_locale_was_chosen() {
-        use super::LanguageChoice;
-        use crate::i18n::Locale;
-        assert_eq!(Settings::default().language, LanguageChoice::System);
-        let older: Settings = serde_json::from_value(serde_json::json!({"volume": 37})).unwrap();
-        assert_eq!(older.language, LanguageChoice::System);
-        assert_eq!(older.volume, 37);
-        for (json, choice) in [
-            (serde_json::json!("system"), LanguageChoice::System),
-            (
-                serde_json::json!("es"),
-                LanguageChoice::Locale(Locale::Spanish),
-            ),
-            (
-                serde_json::json!("pt-BR"),
-                LanguageChoice::Locale(Locale::PortugueseBrazil),
-            ),
-            (
-                serde_json::json!("zh-Hant"),
-                LanguageChoice::Locale(Locale::ChineseTraditional),
-            ),
-            (
-                serde_json::json!("de"),
-                LanguageChoice::Locale(Locale::German),
-            ),
-            // A language a later version added, or a hand-edited typo, keeps
-            // the rest of the file and follows the system.
-            (serde_json::json!("tlh"), LanguageChoice::System),
-            (serde_json::json!(7), LanguageChoice::System),
-            (serde_json::Value::Null, LanguageChoice::System),
-        ] {
-            let settings: Settings =
-                serde_json::from_value(serde_json::json!({"language": json, "volume": 37}))
-                    .unwrap();
-            assert_eq!(settings.language, choice, "{json}");
-            assert_eq!(settings.volume, 37);
-        }
-        for &locale in crate::i18n::LOCALES {
-            let settings = Settings {
-                language: LanguageChoice::Locale(locale),
-                ..Default::default()
-            };
-            let text = serde_json::to_string(&settings).unwrap();
-            assert!(text.contains(&format!("\"language\":\"{}\"", locale.tag())));
-            let saved: Settings = serde_json::from_str(&text).unwrap();
-            assert_eq!(saved.language, settings.language);
-        }
-        let text = serde_json::to_string(&Settings::default()).unwrap();
-        assert!(text.contains("\"language\":\"system\""));
-        assert_eq!(
-            LanguageChoice::System.resolve(),
-            Locale::English,
-            "tests pin English"
-        );
-    }
-
-    #[test]
     fn mac_notch_widget_defaults_to_false_when_absent_and_round_trips_true() {
         let empty: Settings = serde_json::from_str("{}").unwrap();
         assert!(!empty.mac_notch_widget);
@@ -1060,6 +959,15 @@ mod tests {
         )
         .unwrap();
         assert!(settings.tracklist_compact);
+    }
+
+    #[test]
+    fn settings_from_before_the_language_picker_was_removed_still_load() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"language":"de-DE","tracklist_compact":true}"#).unwrap();
+        assert!(settings.tracklist_compact);
+        let text = serde_json::to_string(&settings).unwrap();
+        assert!(!text.contains("\"language\""));
     }
 
     #[test]

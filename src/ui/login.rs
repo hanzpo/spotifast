@@ -173,7 +173,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
             ui.painter().text(
                 pos2(rect.center().x, rect.bottom() - 24.0),
                 egui::Align2::CENTER_BOTTOM,
-                // Translators: {version} is the app's version number, such as 1.2.0.
                 gettext(locale, "Spotifast {version} • not affiliated with Spotify")
                     .replace("{version}", env!("CARGO_PKG_VERSION")),
                 theme::regular(11.5),

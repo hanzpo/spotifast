@@ -560,14 +560,8 @@ pub fn picked_menu(
         ui.add_space(10.0);
         ui.label(
             egui::RichText::new(
-                ngettext(
-                    locale,
-                    // Translators: Keep {count} exactly as written. It becomes the number of selected songs.
-                    "{count} song",
-                    "{count} songs",
-                    count as u32,
-                )
-                .replace("{count}", &count.to_string()),
+                ngettext(locale, "{count} song", "{count} songs", count as u32)
+                    .replace("{count}", &count.to_string()),
             )
             .font(theme::medium(12.0))
             .color(palette.secondary),
@@ -1263,13 +1257,9 @@ fn track_row_contents(
             egui::WidgetType::Button,
             ui.is_enabled() && !unavailable,
             row.picked,
-            gettext(
-                app.locale,
-                // Translators: {title} is a song or episode name, {subtitle} its artists or podcast.
-                "Play {title}, {subtitle}",
-            )
-            .replace("{title}", row.item.name())
-            .replace("{subtitle}", &row.item.subtitle()),
+            gettext(app.locale, "Play {title}, {subtitle}")
+                .replace("{title}", row.item.name())
+                .replace("{subtitle}", &row.item.subtitle()),
         )
     });
     if response.gained_focus() {
@@ -1904,7 +1894,6 @@ fn drag_label(locale: Locale, track: &DragTrack) -> String {
         [item] => item.name().to_string(),
         [first, rest @ ..] => ngettext(
             locale,
-            // Translators: The label beside the pointer while songs are dragged. {name} is the first song's name and {count} how many more songs are dragged with it.
             "{name} + {count} more",
             "{name} + {count} more",
             rest.len() as u32,
@@ -2019,12 +2008,7 @@ pub fn table_header(
             egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
                 ui.is_enabled(),
-                gettext(
-                    locale,
-                    // Translators: {column} is a column heading of a song list, such as Title.
-                    "Sort by {column}",
-                )
-                .replace("{column}", text),
+                gettext(locale, "Sort by {column}").replace("{column}", text),
             )
         });
         theme::focus_ring(ui, &response);
@@ -2898,7 +2882,6 @@ pub const AUTHOR_URL: &str = "https://paolino.me";
 /// "Built with love by Carmine Paolino", with the name linking to
 /// [`AUTHOR_URL`]. Returns whether the name was clicked.
 pub fn credit(ui: &mut Ui, palette: &Palette, locale: Locale) -> bool {
-    // Translators: {name} is replaced by the author's name, shown as a link.
     let sentence = gettext(locale, "Built with love by {name}");
     let (before, after) = sentence.split_once("{name}").unwrap_or((&sentence, ""));
     let mut clicked = false;

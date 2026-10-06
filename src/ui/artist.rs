@@ -276,7 +276,6 @@ fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Optio
         byline.push((
             ngettext(
                 locale,
-                // Translators: {count} is the number of people who follow an artist.
                 "{count} follower",
                 "{count} followers",
                 u32::try_from(followers.total).unwrap_or(u32::MAX),

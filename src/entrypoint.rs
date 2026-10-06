@@ -40,19 +40,13 @@ struct Cli {
 
     /// Extra demo surfaces: a comma-separated list of `queue`, `playing-next`,
     /// `devices`, `shortcuts`, `create`, `light`, `focus`, `personal-app`,
-    /// `windows-taskbar`, `german`, `lyrics`, `lyrics-fullscreen`, `collection-loading`,
+    /// `windows-taskbar`, `lyrics`, `lyrics-fullscreen`, `collection-loading`,
     /// `shuffle-selected`, `shuffle-started`, `undated-mix`, `signed-out`, `connecting`, `library-list`,
     /// `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
     /// or `library-grid-wide`.
     #[cfg(feature = "demo")]
     #[arg(long)]
     demo_show: Option<String>,
-
-    /// Interface language, in place of the saved setting and the system's.
-    /// Requires demo mode.
-    #[cfg(feature = "demo")]
-    #[arg(long, value_enum)]
-    demo_language: Option<spotifast::i18n::Locale>,
 
     /// Write a PNG of the demo window to this path and exit. Implies
     /// `--demo`. Without `--demo-size`, the shot is the window's own frame
@@ -487,10 +481,6 @@ pub(crate) fn run() -> eframe::Result<()> {
     if demo {
         spotifast::demo::populate(&mut app);
         spotifast::demo::apply_flags(&mut app, cli.demo_page.as_deref(), cli.demo_show.as_deref());
-        if let Some(locale) = cli.demo_language {
-            app.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
-            app.locale = locale;
-        }
     }
     #[cfg(feature = "demo")]
     let shot = cli.demo_shot.clone().map(|path| Shot {

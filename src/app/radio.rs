@@ -32,11 +32,7 @@ impl App {
                 .map(|artist| artist.name.clone()),
             _ => None,
         }?;
-        Some(
-            // Translators: Keep {track} unchanged. It is the name of the song,
-            // playlist, album, or artist the radio is based on, not translated.
-            gettext(self.locale, "{track} Radio").replace("{track}", &name),
-        )
+        Some(gettext(self.locale, "{track} Radio").replace("{track}", &name))
     }
 
     /// The seed's artwork, for the radio page's cover.

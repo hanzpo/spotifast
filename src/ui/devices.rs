@@ -68,7 +68,6 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
     painter.text(
         pos2(rect.left() + 48.0, rect.center().y - 9.0),
         egui::Align2::LEFT_CENTER,
-        // Translators: {name} is the name this computer uses in Spotify Connect.
         gettext(app.locale, "{name} (this computer)").replace("{name}", &app.settings.device_name),
         theme::medium(14.0),
         palette.text,
@@ -285,7 +284,6 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                             let is_local = device.id.is_some() && device.id == local_id;
                             let active = device.id.is_some() && device.id == active_id;
                             let name = if is_local {
-                                // Translators: {name} is the name this computer uses in Spotify Connect.
                                 gettext(locale, "{name} (this computer)")
                                     .replace("{name}", &device.name)
                             } else {

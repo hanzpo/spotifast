@@ -320,11 +320,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         ui.horizontal(|ui| {
             theme::text(
                 ui,
-                gettext(
-                    app.locale,
-                    // Translators: Songs added manually, before the current playlist or album continues.
-                    "Playing next",
-                ),
+                gettext(app.locale, "Playing next"),
                 theme::semibold(14.0),
                 palette.text,
             );
@@ -427,11 +423,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     if queue_len > queued_len {
         theme::text(
             ui,
-            gettext(
-                app.locale,
-                // Translators: Upcoming songs from the current playlist or album, after manually queued songs.
-                "Next up",
-            ),
+            gettext(app.locale, "Next up"),
             theme::semibold(14.0),
             palette.text,
         );
