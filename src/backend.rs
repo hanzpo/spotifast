@@ -768,6 +768,10 @@ pub enum Event {
         url: String,
         color: [u8; 3],
     },
+    /// The cover could not be fetched, so its colour may be asked for again.
+    AccentUnavailable {
+        url: String,
+    },
     Error(String),
     /// Track lyrics, or `None` when unavailable.
     Lyrics {
@@ -3190,15 +3194,20 @@ impl Worker {
         let events = self.events.clone();
         let waker = self.waker.clone();
         tokio::spawn(async move {
-            if let Ok(bytes) = art.fetch(&url).await {
-                let color = tokio::task::spawn_blocking(move || accent_color(&bytes))
-                    .await
-                    .ok()
-                    .flatten();
-                if let Some(color) = color {
-                    let _ = events.send(Event::Accent { url, color });
-                    waker.wake();
-                }
+            let Ok(bytes) = art.fetch(&url).await else {
+                let _ = events.send(Event::AccentUnavailable { url });
+                waker.wake();
+                return;
+            };
+            // A cover that cannot be decoded or has no colour answers the
+            // same way every time, so it stays unanswered.
+            let color = tokio::task::spawn_blocking(move || accent_color(&bytes))
+                .await
+                .ok()
+                .flatten();
+            if let Some(color) = color {
+                let _ = events.send(Event::Accent { url, color });
+                waker.wake();
             }
         });
     }

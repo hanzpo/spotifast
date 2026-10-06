@@ -34,6 +34,9 @@ const REMOTE_POLL_ACTIVE: Duration = Duration::from_secs(4);
 const REMOTE_POLL_IDLE: Duration = Duration::from_secs(20);
 const REMOTE_FRESH: Duration = Duration::from_secs(45);
 const DEVICES_FRESH: Duration = Duration::from_secs(12);
+/// How long a cover whose download failed waits before its colour is asked
+/// for again.
+const ACCENT_RETRY: Duration = Duration::from_secs(30);
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(280);
 /// How far into a song Previous restarts it rather than stepping back,
 /// matching what librespot does during playback.
@@ -388,6 +391,9 @@ pub struct App {
     saved_writes: HashMap<String, bool>,
     pub accents: HashMap<String, Color32>,
     accent_pending: HashSet<String>,
+    /// Covers whose download failed, and when, so their colour is asked for
+    /// again after a pause rather than never or on every frame.
+    accent_failed: HashMap<String, Instant>,
 
     pub dialog: Option<Dialog>,
     cover_request: u64,
@@ -817,6 +823,7 @@ impl App {
             saved_writes: HashMap::new(),
             accents: HashMap::new(),
             accent_pending: HashSet::new(),
+            accent_failed: HashMap::new(),
             dialog: None,
             cover_request: 0,
             cover_uploads: HashMap::new(),
@@ -1564,7 +1571,15 @@ impl App {
         if let Some(color) = self.accents.get(url) {
             return Some(*color);
         }
+        if self
+            .accent_failed
+            .get(url)
+            .is_some_and(|at| at.elapsed() < ACCENT_RETRY)
+        {
+            return None;
+        }
         if self.accent_pending.insert(url.to_string()) {
+            self.accent_failed.remove(url);
             self.backend.send(Command::Accent {
                 url: url.to_string(),
             });
@@ -1779,6 +1794,10 @@ impl App {
                     self.accent_pending.remove(&url);
                     let tint = self.palette.tint_from_art(color);
                     self.accents.insert(url, tint);
+                }
+                Event::AccentUnavailable { url } => {
+                    self.accent_pending.remove(&url);
+                    self.accent_failed.insert(url, Instant::now());
                 }
                 Event::ProxyRestored { config, password } => {
                     self.handle_proxy_restored(config, password)
@@ -2880,6 +2899,7 @@ impl App {
             self.applied_dark = Some(dark);
             self.accents.clear();
             self.accent_pending.clear();
+            self.accent_failed.clear();
         }
     }
 
@@ -14242,6 +14262,32 @@ mod tests {
         );
         app.reveal_theme_changes = false;
         app
+    }
+
+    /// A cover whose download failed is asked for again after a pause,
+    /// not on every frame and not never.
+    #[test]
+    fn a_cover_tint_that_failed_to_download_is_retried_after_a_pause() {
+        let mut app = test_app("accent-retry");
+        let url = "https://i.scdn.co/image/unreachable";
+
+        // #given a tint was asked for and the download failed
+        assert_eq!(app.tint_for(Some(url)), None);
+        assert!(app.accent_pending.contains(url));
+        app.handle_backend_events(vec![Event::AccentUnavailable { url: url.into() }]);
+
+        // #then it is not asked for again straight away
+        assert_eq!(app.tint_for(Some(url)), None);
+        assert!(!app.accent_pending.contains(url));
+
+        // #when the pause has passed
+        let earlier = Instant::now().checked_sub(ACCENT_RETRY).unwrap();
+        app.accent_failed.insert(url.into(), earlier);
+
+        // #then it is asked for again
+        assert_eq!(app.tint_for(Some(url)), None);
+        assert!(app.accent_pending.contains(url));
+        assert!(!app.accent_failed.contains_key(url));
     }
 
     /// A change of colours keeps the old ones until the window's picture of
