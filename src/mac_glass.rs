@@ -20,9 +20,11 @@ use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// How far the glass sits in from the window's edges and the column's.
-pub const INSET: f32 = 8.0;
-/// The glass's corner radius, close to the window's own on macOS 26.
-pub const RADIUS: f32 = 16.0;
+/// Close enough that the traffic lights, which AppKit places about 16
+/// points in, sit wholly inside its rounded corner.
+pub const INSET: f32 = 5.0;
+/// The glass's corner radius.
+pub const RADIUS: f32 = 14.0;
 
 struct Glass {
     content: Retained<NSView>,
