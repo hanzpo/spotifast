@@ -493,6 +493,27 @@ impl<T> PagedList<T> {
         self.loaded_once = true;
     }
 
+    /// Shows rows from a previous session until the first page arrives,
+    /// which replaces them. A list that already has rows keeps them.
+    pub fn show_cached(&mut self, items: Vec<T>) {
+        if self.loaded_once || !self.items.is_empty() || self.base_offset != 0 {
+            return;
+        }
+        self.items = items;
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    /// The first rows, for a later session to show while it loads.
+    pub fn leading(&self, limit: usize) -> Vec<T>
+    where
+        T: Clone,
+    {
+        if self.base_offset != 0 {
+            return Vec::new();
+        }
+        self.items.iter().take(limit).cloned().collect()
+    }
+
     pub fn reset_at(&mut self, offset: u32) {
         self.reset();
         self.base_offset = offset;
@@ -555,6 +576,14 @@ impl<T> CursorList<T> {
 
     pub fn can_load_more(&self) -> bool {
         !self.loading && !self.complete
+    }
+
+    /// Shows rows from a previous session until the first page arrives,
+    /// which replaces them. A list that already has rows keeps them.
+    pub fn show_cached(&mut self, items: Vec<T>) {
+        if !self.loaded_once && self.items.is_empty() {
+            self.items = items;
+        }
     }
 }
 

@@ -26,7 +26,7 @@ Spotifast follows each platform's conventions. On Linux:
 | Artwork cache | `~/.cache/spotifast/art/` | Always |
 | Lyrics cache | `~/.cache/spotifast/lyrics/` | Always |
 | Account-scoped playlist page cache | `~/.cache/spotifast/playlists/<account-id>/` | Always |
-| Account-scoped Home shelves | `~/.cache/spotifast/home/` | Always |
+| Account-scoped Home shelves and library rows | `~/.cache/spotifast/home/` | Always |
 | Last run's log | `~/.local/state/spotifast/spotifast.log` | Always |
 | Crash log | `~/.local/state/spotifast/panic.log` | Always |
 
@@ -148,7 +148,9 @@ Home's shelves (recently played, top artists and songs, made-for-you
 playlists and podcast episodes) are stored under `home/` in the cache
 directory, one JSON file per account. Once Spotify confirms the account,
 Home shows the last session's shelves while it asks for fresh ones, and a
-shelf Spotify has already answered keeps that answer. The file is rewritten
+shelf Spotify has already answered keeps that answer. The same file keeps
+the first 50 saved albums, followed artists and saved podcasts, which the
+library shows until Spotify's first page replaces them. The file is rewritten
 at most every 20 seconds after new shelves arrive, and when the app quits.
 
 The last good playlist folder tree is kept in `session.json`, scoped to the

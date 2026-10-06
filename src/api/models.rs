@@ -626,14 +626,14 @@ pub struct SavedTrack {
     pub track: Track,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct SavedAlbum {
     #[serde(default)]
     pub added_at: Option<String>,
     pub album: Album,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct SavedShow {
     #[serde(default)]
     pub added_at: Option<String>,

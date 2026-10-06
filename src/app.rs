@@ -1887,7 +1887,7 @@ impl App {
                     if self.user_id() == Some(account_id.as_str())
                         && let Some(cache) = cache.filter(|cache| cache.valid_for(&account_id))
                     {
-                        cache.restore(&mut self.home);
+                        cache.restore(&mut self.home, &mut self.library);
                     }
                 }
                 Event::UserName { id, name } => {
@@ -5370,6 +5370,7 @@ impl App {
                     for item in &page.items {
                         self.saved.insert(item.album.uri.clone(), true);
                     }
+                    self.home_cache_dirty |= offset == 0;
                     self.library.albums.absorb(offset, page);
                 }
                 Err(error) => self.library.albums.fail(error.to_string()),
@@ -5387,6 +5388,7 @@ impl App {
                     Ok(page) => {
                         if after.is_none() {
                             list.items.clear();
+                            self.home_cache_dirty = true;
                         }
                         let received = page.items.len();
                         for artist in &page.items {
@@ -5417,6 +5419,7 @@ impl App {
                     if !unknown.is_empty() {
                         self.backend.send(Command::AudiobookShows(unknown));
                     }
+                    self.home_cache_dirty |= offset == 0;
                     self.library.shows.absorb(offset, page);
                     if offset == 0 && self.home.requested {
                         self.request_home_episodes();
@@ -9427,7 +9430,7 @@ impl App {
         }
         if let Some(account) = self.user_id().map(str::to_owned) {
             self.home_cache_dirty = false;
-            let cache = crate::home_cache::Cache::capture(account, &self.home);
+            let cache = crate::home_cache::Cache::capture(account, &self.home, &self.library);
             self.backend.send(Command::StoreHomeCache(cache));
         }
     }
@@ -14325,6 +14328,7 @@ mod tests {
             cache: Some(crate::home_cache::Cache::capture(
                 account.into(),
                 &last_session,
+                &Library::default(),
             )),
         };
 
