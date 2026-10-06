@@ -264,7 +264,7 @@ main fields are:
 | `milkdrop_screen_hz` | `0` | Last reported display refresh rate |
 | `milkdrop_fullscreen` | `false` | The MilkDrop window fills the screen |
 | `milkdrop_size` | `640, 480` | The MilkDrop window's size in points |
-| `keep_playing_in_background` | `true` | Close to tray |
+| `keep_playing_in_background` | `true` | Close to tray (Windows and Linux; macOS always quits) |
 | `mac_notch_widget` | `false` | Show interactive Now Playing widget when hovering over the MacBook notch (macOS only) |
 | `web_client_id` | none | Optional personal Spotify app id used alongside shared coverage |
 | `personal_app_nudge_at` | none | Legacy daily-reminder timestamp, retained for older releases |

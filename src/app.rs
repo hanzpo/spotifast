@@ -196,7 +196,8 @@ pub struct AppOptions {
     /// Register the MPRIS media-control service and follow the desktop's
     /// light or dark preference (Linux).
     pub media_controls: bool,
-    /// Register the system-tray item (Linux).
+    /// Register the system-tray item. Off on macOS, where closing the window
+    /// quits instead of hiding to the menu bar.
     pub tray: bool,
 }
 
@@ -205,7 +206,7 @@ impl Default for AppOptions {
         Self {
             restore_sign_in: true,
             media_controls: true,
-            tray: true,
+            tray: !cfg!(target_os = "macos"),
         }
     }
 }
@@ -10264,6 +10265,17 @@ mod tests {
     use crate::api::models::{
         Episode, Image, Page as ApiPage, ResumePoint, SavedEpisode, SavedTrack, SearchResults,
     };
+
+    /// macOS shows no menu bar item, so closing the window quits rather
+    /// than hiding the app where it could not be found again.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_has_no_menu_bar_item_and_closing_quits() {
+        assert!(!AppOptions::default().tray);
+        let mut app = test_app("no-menu-bar-item");
+        app.settings.keep_playing_in_background = true;
+        assert!(!app.hides_to_tray());
+    }
 
     /// #623: the missing-output message the sink reports is the one the
     /// catalogues translate.

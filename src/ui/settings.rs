@@ -484,7 +484,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ),
             )
             .to_owned(),
-        ),
+        )
+        // macOS has no menu bar item to hide to, so closing the window quits.
+        .when(!cfg!(target_os = "macos")),
         RowText::new(
             gettext(locale, "Audio output"),
             gettext(

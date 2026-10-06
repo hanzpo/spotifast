@@ -35,9 +35,9 @@ You can rename it in Settings.
 
 - **Closing the window does not stop the music.** Spotifast keeps playing
   from the system tray; reopen it from the tray icon and quit from the tray
-  menu or Ctrl+Q. On macOS you can also reopen it from the Dock. Settings can
-  turn this off. On Linux, including Flatpak, a desktop with a working system
-  tray is required for this behavior.
+  menu or Ctrl+Q. Settings can turn this off. On Linux, including Flatpak, a
+  desktop with a working system tray is required for this behavior. On macOS
+  there is no menu bar icon, and closing the window quits.
 - **Play and Pause fade.** With the default audio settings, music played on
   this computer fades in or out to avoid a hard cut.
 - **Play buttons show progress.** The button spins until Spotify responds.
