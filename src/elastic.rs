@@ -1,24 +1,34 @@
 //! The rubber band at a scroll area's edge, as AppKit's scroll views have it.
 //!
-//! A touchpad gesture that reaches the top or bottom keeps moving the
-//! content, ever more stiffly, and when the fingers lift (or the glide that
-//! follows runs into the edge) it springs back. egui leaves the scroll delta
-//! unused when an area cannot scroll further, so whatever is left after the
-//! area has drawn is the overscroll. The content's shapes are then moved by
-//! the stretch inside the area's own clip, so nothing spills past its edges.
+//! Fingers that drag the content past the top or bottom keep moving it,
+//! ever more stiffly, and when they lift it springs back. A glide that runs
+//! into the edge bounces once, as far as its speed carries it, and the rest
+//! of the glide is spent: it does not keep pressing against the edge.
+//!
+//! egui leaves the scroll delta unused when an area cannot scroll further,
+//! so whatever is left after the area has drawn is the overscroll. The
+//! content's shapes are then moved by the stretch inside the area's own
+//! clip, so nothing spills past its edges.
 //!
 //! Only touchpad input stretches: a mouse wheel stops at the edge.
 
 use egui::layers::ShapeIdx;
-use egui::{Context, Event, Id, LayerId, MouseWheelUnit, Rect, TouchPhase, Ui, Vec2};
+use egui::{Context, Event, Id, MouseWheelUnit, Rect, TouchPhase, Ui, Vec2};
 
-/// How stiff the band is: Apple's constant for `UIScrollView`.
+/// How stiff the band is under the fingers: Apple's constant for
+/// `UIScrollView`.
 const STIFFNESS: f32 = 0.55;
-/// How fast a released band returns, per second. About a third of a second
-/// to settle.
-const RETURN_RATE: f32 = 12.0;
-/// Below this many points the band is at rest.
-const AT_REST: f32 = 0.25;
+/// The share of an area's length the band can stretch to.
+const REACH: f32 = 1.0 / 3.0;
+/// The return spring's natural frequency, per second. Critically damped, it
+/// settles in about half a second and never overshoots the edge.
+const SPRING: f32 = 12.0;
+/// The fastest a glide may hit the edge, in points per second, so a hard
+/// fling bounces no further than about a hundred points.
+const MAX_BOUNCE_SPEED: f32 = 3200.0;
+/// Below this many points, and this speed, the band is at rest.
+const AT_REST: f32 = 0.3;
+const AT_REST_SPEED: f32 = 6.0;
 
 /// Where a touchpad gesture is: fingers on the pad, the glide after they
 /// lift, or neither.
@@ -40,39 +50,77 @@ struct Input {
     precise: bool,
 }
 
-/// One area's band: the overscroll it has taken, and where it sits.
+/// One area's band.
 #[derive(Clone, Copy, Debug)]
 struct Band {
-    /// The overscroll the gesture asked for, before the band's resistance.
-    pulled: f32,
+    /// How far the content stands past its edge, in points.
+    stretch: f32,
+    /// How fast it is moving, in points per second, while it springs.
+    speed: f32,
+    /// This glide has already bounced, so the rest of it is spent.
+    spent: bool,
     rect: Rect,
-    layer: Option<LayerId>,
-    axis: usize,
 }
 
 impl Default for Band {
     fn default() -> Self {
         Self {
-            pulled: 0.0,
+            stretch: 0.0,
+            speed: 0.0,
+            spent: false,
             rect: Rect::NOTHING,
-            layer: None,
-            axis: 1,
         }
     }
 }
 
 impl Band {
-    fn stretch(&self) -> f32 {
-        rubber(self.pulled, extent(self.rect, self.axis))
+    fn at_rest(&self) -> bool {
+        self.stretch == 0.0 && self.speed == 0.0
+    }
+
+    /// The fingers move the band by `delta` more, against its resistance.
+    fn pull(&mut self, delta: f32, extent: f32) {
+        let pulled = unrubber(self.stretch, extent) + delta;
+        // Pulled back past the edge, the band is simply gone.
+        self.stretch = if self.stretch != 0.0 && pulled.signum() != self.stretch.signum() {
+            0.0
+        } else {
+            rubber(pulled, extent)
+        };
+        self.speed = 0.0;
+    }
+
+    /// A glide meets the edge at `speed`: one bounce, then nothing more.
+    fn bounce(&mut self, speed: f32) {
+        if !self.spent {
+            self.speed = speed.clamp(-MAX_BOUNCE_SPEED, MAX_BOUNCE_SPEED);
+            self.spent = true;
+        }
+    }
+
+    /// Lets the spring run for `dt` seconds: the exact critically damped
+    /// motion toward the edge, so a slow frame cannot make it overshoot.
+    fn settle(&mut self, dt: f32) {
+        let (x, v) = (self.stretch, self.speed);
+        let decay = (-SPRING * dt).exp();
+        let lead = v + SPRING * x;
+        self.stretch = (x + lead * dt) * decay;
+        self.speed = (v - SPRING * lead * dt) * decay;
+        if self.stretch.abs() < AT_REST && self.speed.abs() < AT_REST_SPEED {
+            self.stretch = 0.0;
+            self.speed = 0.0;
+        }
     }
 }
 
+/// The farthest the band ever stretches: a third of the area, as stiff as
+/// AppKit's own scroll views feel.
 fn extent(rect: Rect, axis: usize) -> f32 {
-    rect.size()[axis].max(1.0)
+    (rect.size()[axis] * REACH).max(1.0)
 }
 
 /// How far content moves when pulled `pulled` points past the edge of an
-/// area `extent` long: one to one at first, never as far as `extent`.
+/// area `extent` long: nearly one to one at first, never as far as `extent`.
 pub fn rubber(pulled: f32, extent: f32) -> f32 {
     let distance = pulled.abs();
     let moved = (1.0 - 1.0 / (distance * STIFFNESS / extent + 1.0)) * extent;
@@ -135,24 +183,20 @@ pub fn show<R>(
     let key = Id::new(("elastic-place", layer, corner.x as i32, corner.y as i32));
     let known: Option<Id> = ctx.data(|data| data.get_temp(key));
     let pointer = ctx.pointer_latest_pos();
+    let dt = ctx.input(|input| input.stable_dt).clamp(1.0 / 240.0, 0.05);
 
-    // A stretched band takes the gesture first, so moving back toward the
-    // content relaxes the band before the content scrolls.
+    // While the content stands past its edge, the gesture moves the band,
+    // not the content: fingers pull it further or let it back, and a glide
+    // that already bounced is spent.
     if let Some(id) = known
         && let Some(mut band) = ctx.data(|data| data.get_temp::<Band>(id))
-        && band.pulled != 0.0
+        && !band.at_rest()
+        && gesture.precise
         && pointer.is_some_and(|pos| band.rect.contains(pos))
     {
         let delta = ctx.input_mut(|input| std::mem::take(&mut input.smooth_scroll_delta[axis]));
-        if delta != 0.0 {
-            let pulled = band.pulled + delta;
-            // Past the rest point the band is gone; the rest of this
-            // movement is dropped rather than scrolled, for one pass.
-            band.pulled = if pulled.signum() == band.pulled.signum() {
-                pulled
-            } else {
-                0.0
-            };
+        if delta != 0.0 && gesture.gesture == Gesture::Touching {
+            band.pull(delta, extent(band.rect, axis));
             ctx.data_mut(|data| data.insert_temp(id, band));
         }
     }
@@ -170,8 +214,9 @@ pub fn show<R>(
         .data(|data| data.get_temp::<Band>(id))
         .unwrap_or_default();
     band.rect = output.inner_rect;
-    band.layer = Some(layer);
-    band.axis = axis;
+    if gesture.gesture != Gesture::Gliding {
+        band.spent = false;
+    }
     let hovered = pointer.is_some_and(|pos| output.inner_rect.contains(pos));
     let scrollable = output.content_size[axis] > output.inner_rect.size()[axis] + 0.5;
 
@@ -183,29 +228,24 @@ pub fn show<R>(
         let at_start = offset <= 0.5 && left > 0.0;
         let at_end = offset >= max - 0.5 && left < 0.0;
         if at_start || at_end {
-            band.pulled += left;
+            match gesture.gesture {
+                Gesture::Touching => band.pull(left, extent(band.rect, axis)),
+                _ => band.bounce(left / dt),
+            }
         }
     }
 
-    // Released, or carried by a glide: spring back.
-    if band.pulled != 0.0 && gesture.gesture != Gesture::Touching {
-        let extent = extent(band.rect, axis);
-        let dt = ctx.input(|input| input.stable_dt).min(0.1);
-        let stretch = band.stretch() * (-RETURN_RATE * dt).exp();
-        band.pulled = if stretch.abs() < AT_REST {
-            0.0
-        } else {
-            unrubber(stretch, extent)
-        };
+    // Unless fingers hold it, the band springs back.
+    if !band.at_rest() && gesture.gesture != Gesture::Touching {
+        band.settle(dt);
     }
-    if band.pulled != 0.0 {
+    if !band.at_rest() {
         ctx.request_repaint();
     }
 
-    let stretch = band.stretch();
-    if stretch != 0.0 {
+    if band.stretch != 0.0 {
         let mut shift = Vec2::ZERO;
-        shift[axis] = stretch;
+        shift[axis] = band.stretch;
         ctx.graphics_mut(|graphics| {
             let list = graphics.entry(layer);
             for index in start.0..list.next_idx().0 {
@@ -237,6 +277,21 @@ mod tests {
             let back = unrubber(rubber(pulled, 500.0), 500.0);
             assert!((back - pulled).abs() < 0.01, "{pulled} -> {back}");
         }
+    }
+
+    #[test]
+    fn a_released_band_returns_without_crossing_the_edge() {
+        let mut band = Band {
+            stretch: 120.0,
+            ..Band::default()
+        };
+        let mut steps = 0;
+        while !band.at_rest() {
+            band.settle(1.0 / 60.0);
+            assert!(band.stretch >= 0.0, "overshot to {}", band.stretch);
+            steps += 1;
+        }
+        assert!((20..60).contains(&steps), "settled in {steps} frames");
     }
 
     fn wheel(phase: TouchPhase, delta: f32) -> Event {
@@ -274,35 +329,86 @@ mod tests {
             stretch = ui
                 .ctx()
                 .data(|data| data.get_temp::<Band>(output.id))
-                .map_or(0.0, |band| band.stretch());
+                .map_or(0.0, |band| band.stretch);
         });
         output.textures_delta.clear();
         stretch
     }
 
+    struct Clock {
+        ctx: Context,
+        time: f64,
+    }
+
+    impl Clock {
+        fn new() -> Self {
+            let mut clock = Self {
+                ctx: Context::default(),
+                time: 0.0,
+            };
+            clock.step(vec![]);
+            clock
+        }
+
+        fn step(&mut self, events: Vec<Event>) -> f32 {
+            self.time += 1.0 / 60.0;
+            pass(&self.ctx, events, self.time)
+        }
+    }
+
     #[test]
-    fn a_pull_past_the_top_stretches_and_springs_back_on_release() {
-        let ctx = Context::default();
-        let mut time = 0.0;
-        let mut step = |events| {
-            time += 1.0 / 60.0;
-            pass(&ctx, events, time)
-        };
-        step(vec![]);
-        step(vec![wheel(TouchPhase::Start, 0.0)]);
+    fn fingers_pull_past_the_top_and_the_band_springs_back_when_they_lift() {
+        let mut clock = Clock::new();
+        clock.step(vec![wheel(TouchPhase::Start, 0.0)]);
         let mut stretch = 0.0;
         for _ in 0..10 {
-            stretch = step(vec![wheel(TouchPhase::Move, 20.0)]);
+            stretch = clock.step(vec![wheel(TouchPhase::Move, 20.0)]);
         }
         assert!(stretch > 20.0 && stretch < 200.0, "{stretch}");
 
         // #then holding still keeps it, and lifting returns it to rest
-        assert_eq!(step(vec![]), stretch);
-        step(vec![wheel(TouchPhase::End, 0.0)]);
+        assert_eq!(clock.step(vec![]), stretch);
+        clock.step(vec![wheel(TouchPhase::End, 0.0)]);
         for _ in 0..60 {
-            stretch = step(vec![]);
+            stretch = clock.step(vec![]);
         }
         assert_eq!(stretch, 0.0);
+    }
+
+    /// Scrolling on at the top keeps the band in reach: it stiffens rather
+    /// than following the fingers away.
+    #[test]
+    fn scrolling_on_at_the_top_stiffens_rather_than_running_away() {
+        let mut clock = Clock::new();
+        clock.step(vec![wheel(TouchPhase::Start, 0.0)]);
+        let mut stretch = 0.0;
+        for _ in 0..120 {
+            stretch = clock.step(vec![wheel(TouchPhase::Move, 25.0)]);
+        }
+        assert!(stretch < 300.0 * REACH, "{stretch}");
+    }
+
+    /// A glide that hits the top bounces once and comes back while the
+    /// rest of the glide is still arriving.
+    #[test]
+    fn a_glide_into_the_top_bounces_once_and_returns() {
+        let mut clock = Clock::new();
+        clock.step(vec![wheel(TouchPhase::Start, 0.0)]);
+        clock.step(vec![wheel(TouchPhase::Move, 30.0)]);
+        clock.step(vec![wheel(TouchPhase::End, 0.0)]);
+        clock.step(vec![wheel(TouchPhase::Start, 0.0)]);
+        let mut peak: f32 = 0.0;
+        let mut stretch = 0.0;
+        // A long glide whose deltas fade out over two seconds.
+        for frame in 0..120 {
+            let delta = 40.0 * (1.0 - frame as f32 / 120.0);
+            stretch = clock.step(vec![wheel(TouchPhase::Move, delta)]);
+            peak = peak.max(stretch);
+        }
+        assert!(peak > 10.0 && peak < 120.0, "peaked at {peak}");
+        // #then it is back at the edge before the glide even ends
+        assert_eq!(stretch, 0.0);
+        clock.step(vec![wheel(TouchPhase::End, 0.0)]);
     }
 
     #[test]
