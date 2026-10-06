@@ -1,5 +1,4 @@
-//! No middle-click scrolling on macOS. Scroll areas get AppKit's rubber band
-//! at their edges instead.
+//! No input interception or frame state on macOS.
 
 use egui::{Context, Id, Response, ScrollArea, Ui};
 
@@ -32,10 +31,10 @@ pub fn row(_ui: &Ui, _response: &Response) {}
 pub fn show<R>(
     ui: &mut Ui,
     area: ScrollArea,
-    axes: egui::Vec2b,
+    _axes: egui::Vec2b,
     contents: impl FnOnce(&mut Ui) -> R,
 ) -> egui::scroll_area::ScrollAreaOutput<R> {
-    crate::elastic::show(ui, area, axes, contents)
+    area.show(ui, contents)
 }
 
 pub fn lyrics(_ui: &Ui, _id: Id) {}
