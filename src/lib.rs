@@ -11,6 +11,10 @@ pub mod bidi;
 pub mod credentials;
 #[cfg(any(test, feature = "demo"))]
 pub mod demo;
+/// The rubber band at scroll edges, on macOS only, beside the input the
+/// other platforms' autoscroll owns.
+#[cfg(not(any(windows, target_os = "linux")))]
+pub mod elastic;
 pub mod emoji;
 pub mod eq;
 pub mod history;
