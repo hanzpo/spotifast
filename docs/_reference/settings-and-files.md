@@ -232,7 +232,6 @@ main fields are:
 | `custom_theme_cache` | absent | Last accepted custom palette; preserves appearance if its file is missing or invalid |
 | `system_theme_cache` | absent | Last accepted Omarchy palette for Follow system; retained across restarts |
 | `accent_from_art` | `true` | Take the accent colour from album art |
-| `player_bar_vis` | `off` | Since 0.11.0: what moves behind the player bar while a song plays on this computer: `off`, `spectrum` or `waveform` |
 | `library_sort` | `{}` | Per-section Library order overrides, since 0.8.0: `library`, `recently_played`, `name`, `recently_added`, `local`, or `spotify`, where supported |
 | `sidebar_order` | `[]` | Saved local playlist arrangement, including an unpinned Liked Songs, retained when another sort is selected |
 | `pinned_contexts` | `[]` | Local Library pin order; Liked Songs uses `spotifast:liked-songs`, a local key never sent to Spotify |
@@ -316,8 +315,6 @@ update badge for checking its layout. `personal-app` shows the personal Spotify
 app introduction.
 `signed-out` and `connecting` show the sign-in card before and while the
 session connects.
-`player-bar-spectrum` and `player-bar-waveform` play a fixed, music-like
-sound on this computer with that player bar visualizer on.
 `lyrics-fullscreen-view` and `lyrics-fullscreen-instrumental` draw full-screen
 lyrics, with words or without, at the window's own size.
 `rtl` gives the first songs of `playlist:pl1` invented Hebrew and Arabic
