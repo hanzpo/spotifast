@@ -17,7 +17,6 @@ const AVATAR_SIZE: f32 = 36.0;
 const ICON_BUTTON_ICON: f32 = 19.0;
 /// `theme::icon_button` pads its icon by 12 px.
 const ICON_BUTTON_SIZE: f32 = ICON_BUTTON_ICON + 12.0;
-const SPINNER_SIZE: f32 = 15.0;
 /// A badge is as tall as its text plus this, and as wide as its text plus
 /// the padding its own label needs.
 const BADGE_PADDING_Y: f32 = 12.0;
@@ -33,8 +32,8 @@ const SEARCH_MIN: f32 = 80.0;
 /// Everything at the right end whose width never changes: the page padding,
 /// the avatar, the gap the account menu leaves, the Settings button, and the
 /// spacing between them. The cursor stops at the left edge of the button, so
-/// this counts one gap, not two. The spinner and the badges are measured on
-/// top of it because they come and go.
+/// this counts one gap, not two. The badges are measured on top of it
+/// because they come and go.
 const RIGHT_CONTROLS_WIDTH: f32 =
     super::widgets::PAGE_PADDING + AVATAR_SIZE + 4.0 + ICON_BUTTON_SIZE + ITEM_SPACING;
 
@@ -49,9 +48,9 @@ fn lead_id() -> egui::Id {
 }
 
 /// The narrowest the bar, and so the page under it, can be before its
-/// controls run into each other: the narrowest field, with the spinner and
-/// the device badge as an icon. Counting them even while they are away keeps
-/// the panels and the window from changing width as they come and go.
+/// controls run into each other: the narrowest field, with the device badge
+/// as an icon. Counting it even while it is away keeps the panels and the
+/// window from changing width as it comes and goes.
 pub fn least_width(ctx: &egui::Context) -> f32 {
     let lead = ctx
         .data(|data| data.get_temp(lead_id()))
@@ -60,12 +59,7 @@ pub fn least_width(ctx: &egui::Context) -> f32 {
 }
 
 fn least_width_after(lead: f32) -> f32 {
-    lead + SEARCH_MIN
-        + RIGHT_CONTROLS_WIDTH
-        + SPINNER_SIZE
-        + ITEM_SPACING
-        + ITEM_SPACING
-        + BADGE_CHIP
+    lead + SEARCH_MIN + RIGHT_CONTROLS_WIDTH + ITEM_SPACING + BADGE_CHIP
 }
 
 /// How the top bar divides itself for one window width.
@@ -310,20 +304,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui.painter()
                     .layout_no_wrap(label, theme::medium(12.5), palette.accent)
             });
-            // Ask once, so the bar reserves room for exactly the spinner it
-            // then draws.
-            let busy = app
-                .backend
-                .activity()
-                .busy(std::time::Duration::from_millis(1000));
             let badges =
                 |labels: bool| badge_width(device_galley.as_ref(), DEVICE_BADGE_PADDING, labels);
-            let controls = RIGHT_CONTROLS_WIDTH
-                + if busy {
-                    SPINNER_SIZE + ITEM_SPACING
-                } else {
-                    0.0
-                };
+            let controls = RIGHT_CONTROLS_WIDTH;
 
             let search_room = (ui.available_width() - window_controls.topbar_width).max(0.0);
             // What sits before the field: the page padding, the navigation
@@ -486,12 +469,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 {
                     app.actions.push(Action::Open(Page::Settings));
                 }
-                // A quiet spinner once the app has been talking to Spotify for a
-                // while, long enough that fast requests never flash it.
-                if busy {
-                    theme::spinner(ui, SPINNER_SIZE, palette.secondary)
-                        .on_hover_text(gettext(locale, "Waiting for Spotify…").as_ref());
-                }
                 // Where playback is.
                 if let Some(galley) = device_galley {
                     let device = galley.text().to_owned();
@@ -590,12 +567,12 @@ mod topbar_fit_tests {
     }
 
     /// At the least width the panels leave it, the bar still holds the
-    /// spinner and the device badge beside the narrowest field (#624).
+    /// device badge beside the narrowest field (#624).
     #[test]
     fn the_least_width_holds_every_control_beside_the_field() {
         let lead = LEAD_GUESS;
         let room = least_width_after(lead) - lead;
-        let controls = RIGHT_CONTROLS_WIDTH + SPINNER_SIZE + ITEM_SPACING;
+        let controls = RIGHT_CONTROLS_WIDTH;
         let fit = topbar_fit(room, controls, DEVICE, CHIP);
         assert!(!fit.labels);
         assert_eq!(fit.search, SEARCH_MIN);
