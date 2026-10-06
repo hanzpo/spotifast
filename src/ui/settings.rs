@@ -1869,8 +1869,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         any_visible = true;
         section(ui, &palette, &about, |ui| {
             ui.horizontal(|ui| {
-                let (logo, _) = ui.allocate_exact_size(Vec2::splat(40.0), egui::Sense::hover());
-                theme::logo(ui, logo.center(), 40.0);
                 ui.vertical(|ui| {
                     theme::text(
                         ui,

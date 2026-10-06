@@ -373,7 +373,7 @@ msgid "Couldn't fetch the lyrics: {error}"
 msgstr "無法取得歌詞：{error}"
 
 #: src/ui/lyrics.rs:151 src/ui/lyrics.rs:405 src/ui/lyrics.rs:620
-#: src/ui/settings.rs:429 src/ui/login.rs:98
+#: src/ui/settings.rs:429 src/ui/login.rs:95
 msgid "Try again"
 msgstr "再試一次"
 
@@ -1174,7 +1174,7 @@ msgctxt "playback status"
 msgid "Connecting"
 msgstr "正在連線"
 
-#: src/ui/settings.rs:423 src/ui/login.rs:89
+#: src/ui/settings.rs:423 src/ui/login.rs:86
 msgid "Connecting to Spotify…"
 msgstr "正在連線至 Spotify…"
 
@@ -1390,7 +1390,7 @@ msgstr "「跟隨系統」會使用你的 Omarchy 色彩。"
 msgid "Follow system uses your desktop's light or dark appearance."
 msgstr "「跟隨系統」會使用桌面的淺色或深色外觀。"
 
-#: src/ui/settings.rs:827 src/ui/settings.rs:1973
+#: src/ui/settings.rs:827 src/ui/settings.rs:1971
 msgid "Language"
 msgstr "語言"
 
@@ -1479,7 +1479,7 @@ msgstr ""
 "「關閉」會忽略環境變數。「系統」會使用環境變數，在 macOS 和 Windows 上還會使"
 "用作業系統的 Proxy。"
 
-#: src/ui/settings.rs:1246 src/ui/login.rs:241
+#: src/ui/settings.rs:1246 src/ui/login.rs:238
 msgid "Apply settings"
 msgstr "套用設定"
 
@@ -1792,16 +1792,16 @@ msgid "Source code"
 msgstr "原始碼"
 
 #. Translators: {query} is the text typed into the settings search field.
-#: src/ui/settings.rs:1929
+#: src/ui/settings.rs:1927
 #, rust-format
 msgid "No settings for “{query}”"
 msgstr "沒有與「{query}」相關的設定"
 
-#: src/ui/settings.rs:1930
+#: src/ui/settings.rs:1928
 msgid "Try fewer words, or check the spelling."
 msgstr "請減少字詞，或檢查拼字。"
 
-#: src/ui/settings.rs:1946
+#: src/ui/settings.rs:1944
 msgctxt "language"
 msgid "System"
 msgstr "系統"
@@ -2132,7 +2132,7 @@ msgid "“{name}” will no longer appear in Your Library."
 msgstr "「{name}」將不再顯示於你的音樂庫。"
 
 #: src/ui/dialogs.rs:104 src/ui/dialogs.rs:147 src/ui/dialogs.rs:416
-#: src/ui/dialogs.rs:595 src/ui/login.rs:81
+#: src/ui/dialogs.rs:595 src/ui/login.rs:78
 msgid "Cancel"
 msgstr "取消"
 
@@ -2487,36 +2487,36 @@ msgstr "沒有已儲存的單集"
 msgid "Saved episodes appear here."
 msgstr "儲存的單集會顯示在這裡。"
 
-#: src/ui/login.rs:66
+#: src/ui/login.rs:63
 msgid "A native Spotify client."
 msgstr "原生 Spotify 用戶端。"
 
-#: src/ui/login.rs:74
+#: src/ui/login.rs:71
 msgid "Waiting for Spotify in your browser…"
 msgstr "正在等待瀏覽器中的 Spotify…"
 
-#: src/ui/login.rs:77
+#: src/ui/login.rs:74
 msgid "Didn't open? Open the sign-in page again"
 msgstr "沒有開啟嗎？重新開啟登入頁面"
 
-#: src/ui/login.rs:106 src/ui/login.rs:141
+#: src/ui/login.rs:103 src/ui/login.rs:138
 msgid "Use the shared Spotify app instead"
 msgstr "改用共用的 Spotify 應用程式"
 
-#: src/ui/login.rs:120
+#: src/ui/login.rs:117
 msgid "Sign in with Spotify"
 msgstr "使用 Spotify 登入"
 
-#: src/ui/login.rs:126
+#: src/ui/login.rs:123
 msgid "Opens Spotify in your browser. Playback requires Premium."
 msgstr "在瀏覽器中開啟 Spotify。播放需要 Premium。"
 
-#: src/ui/login.rs:159
+#: src/ui/login.rs:156
 msgid "Proxy Settings"
 msgstr "Proxy 設定"
 
 #. Translators: {version} is the app's version number, such as 1.2.0.
-#: src/ui/login.rs:180
+#: src/ui/login.rs:177
 #, rust-format
 msgid "Spotifast {version} • not affiliated with Spotify"
 msgstr "Spotifast {version} • 與 Spotify 無關"

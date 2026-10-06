@@ -377,7 +377,7 @@ msgid "Couldn't fetch the lyrics: {error}"
 msgstr "Şarkı sözleri alınamadı: {error}"
 
 #: src/ui/lyrics.rs:151 src/ui/lyrics.rs:405 src/ui/lyrics.rs:620
-#: src/ui/settings.rs:429 src/ui/login.rs:98
+#: src/ui/settings.rs:429 src/ui/login.rs:95
 msgid "Try again"
 msgstr "Tekrar dene"
 
@@ -1205,7 +1205,7 @@ msgctxt "playback status"
 msgid "Connecting"
 msgstr "Bağlanıyor"
 
-#: src/ui/settings.rs:423 src/ui/login.rs:89
+#: src/ui/settings.rs:423 src/ui/login.rs:86
 msgid "Connecting to Spotify…"
 msgstr "Spotify'a bağlanıyor…"
 
@@ -1430,7 +1430,7 @@ msgid "Follow system uses your desktop's light or dark appearance."
 msgstr ""
 "Sistemi takip et seçeneği masaüstünüzün açık veya koyu görünümünü kullanır."
 
-#: src/ui/settings.rs:827 src/ui/settings.rs:1973
+#: src/ui/settings.rs:827 src/ui/settings.rs:1971
 msgid "Language"
 msgstr "Dil"
 
@@ -1525,7 +1525,7 @@ msgstr ""
 "Kapalı, ortam değişkenlerini yok sayar. Sistem, bu değişkenleri ve macOS ile "
 "Windows'ta işletim sistemi proxy'sini kullanır."
 
-#: src/ui/settings.rs:1246 src/ui/login.rs:241
+#: src/ui/settings.rs:1246 src/ui/login.rs:238
 msgid "Apply settings"
 msgstr "Ayarları uygula"
 
@@ -1864,16 +1864,16 @@ msgid "Source code"
 msgstr "Kaynak kodu"
 
 #. Translators: {query} is the text typed into the settings search field.
-#: src/ui/settings.rs:1929
+#: src/ui/settings.rs:1927
 #, rust-format
 msgid "No settings for “{query}”"
 msgstr "“{query}” için ayar bulunamadı"
 
-#: src/ui/settings.rs:1930
+#: src/ui/settings.rs:1928
 msgid "Try fewer words, or check the spelling."
 msgstr "Daha az kelime deneyin veya yazımı kontrol edin."
 
-#: src/ui/settings.rs:1946
+#: src/ui/settings.rs:1944
 msgctxt "language"
 msgid "System"
 msgstr "Sistem"
@@ -2219,7 +2219,7 @@ msgid "“{name}” will no longer appear in Your Library."
 msgstr "“{name}” artık Kitaplığınızda görünmeyecek."
 
 #: src/ui/dialogs.rs:104 src/ui/dialogs.rs:147 src/ui/dialogs.rs:416
-#: src/ui/dialogs.rs:595 src/ui/login.rs:81
+#: src/ui/dialogs.rs:595 src/ui/login.rs:78
 msgid "Cancel"
 msgstr "İptal"
 
@@ -2579,36 +2579,36 @@ msgstr "Kayıtlı bölüm yok"
 msgid "Saved episodes appear here."
 msgstr "Kaydedilen bölümler burada görünür."
 
-#: src/ui/login.rs:66
+#: src/ui/login.rs:63
 msgid "A native Spotify client."
 msgstr "Yerel bir Spotify istemcisi."
 
-#: src/ui/login.rs:74
+#: src/ui/login.rs:71
 msgid "Waiting for Spotify in your browser…"
 msgstr "Tarayıcınızda Spotify bekleniyor…"
 
-#: src/ui/login.rs:77
+#: src/ui/login.rs:74
 msgid "Didn't open? Open the sign-in page again"
 msgstr "Açılmadı mı? Giriş sayfasını tekrar açın"
 
-#: src/ui/login.rs:106 src/ui/login.rs:141
+#: src/ui/login.rs:103 src/ui/login.rs:138
 msgid "Use the shared Spotify app instead"
 msgstr "Bunun yerine paylaşılan Spotify uygulamasını kullan"
 
-#: src/ui/login.rs:120
+#: src/ui/login.rs:117
 msgid "Sign in with Spotify"
 msgstr "Spotify ile giriş yap"
 
-#: src/ui/login.rs:126
+#: src/ui/login.rs:123
 msgid "Opens Spotify in your browser. Playback requires Premium."
 msgstr "Spotify'ı tarayıcınızda açar. Oynatma için Premium gerekir."
 
-#: src/ui/login.rs:159
+#: src/ui/login.rs:156
 msgid "Proxy Settings"
 msgstr "Proxy Ayarları"
 
 #. Translators: {version} is the app's version number, such as 1.2.0.
-#: src/ui/login.rs:180
+#: src/ui/login.rs:177
 #, rust-format
 msgid "Spotifast {version} • not affiliated with Spotify"
 msgstr "Spotifast {version} • Spotify ile bağlantılı değildir"

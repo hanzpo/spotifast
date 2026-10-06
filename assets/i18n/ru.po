@@ -382,7 +382,7 @@ msgid "Couldn't fetch the lyrics: {error}"
 msgstr "Не удалось получить текст песни: {error}"
 
 #: src/ui/lyrics.rs:151 src/ui/lyrics.rs:405 src/ui/lyrics.rs:620
-#: src/ui/settings.rs:429 src/ui/login.rs:98
+#: src/ui/settings.rs:429 src/ui/login.rs:95
 msgid "Try again"
 msgstr "Попробовать снова"
 
@@ -1211,7 +1211,7 @@ msgctxt "playback status"
 msgid "Connecting"
 msgstr "Подключение"
 
-#: src/ui/settings.rs:423 src/ui/login.rs:89
+#: src/ui/settings.rs:423 src/ui/login.rs:86
 msgid "Connecting to Spotify…"
 msgstr "Подключение к Spotify…"
 
@@ -1436,7 +1436,7 @@ msgid "Follow system uses your desktop's light or dark appearance."
 msgstr ""
 "«Как в системе» использует светлое или тёмное оформление рабочего стола."
 
-#: src/ui/settings.rs:827 src/ui/settings.rs:1973
+#: src/ui/settings.rs:827 src/ui/settings.rs:1971
 msgid "Language"
 msgstr "Язык"
 
@@ -1530,7 +1530,7 @@ msgstr ""
 "«Выкл.» игнорирует переменные окружения. «Системный» использует их, а в "
 "macOS и Windows также прокси ОС."
 
-#: src/ui/settings.rs:1246 src/ui/login.rs:241
+#: src/ui/settings.rs:1246 src/ui/login.rs:238
 msgid "Apply settings"
 msgstr "Применить настройки"
 
@@ -1864,16 +1864,16 @@ msgid "Source code"
 msgstr "Исходный код"
 
 #. Translators: {query} is the text typed into the settings search field.
-#: src/ui/settings.rs:1929
+#: src/ui/settings.rs:1927
 #, rust-format
 msgid "No settings for “{query}”"
 msgstr "Нет настроек по запросу «{query}»"
 
-#: src/ui/settings.rs:1930
+#: src/ui/settings.rs:1928
 msgid "Try fewer words, or check the spelling."
 msgstr "Попробуй меньше слов или проверь написание."
 
-#: src/ui/settings.rs:1946
+#: src/ui/settings.rs:1944
 msgctxt "language"
 msgid "System"
 msgstr "Системный"
@@ -2222,7 +2222,7 @@ msgid "“{name}” will no longer appear in Your Library."
 msgstr "«{name}» больше не будет отображаться в медиатеке."
 
 #: src/ui/dialogs.rs:104 src/ui/dialogs.rs:147 src/ui/dialogs.rs:416
-#: src/ui/dialogs.rs:595 src/ui/login.rs:81
+#: src/ui/dialogs.rs:595 src/ui/login.rs:78
 msgid "Cancel"
 msgstr "Отмена"
 
@@ -2585,36 +2585,36 @@ msgstr "Нет сохранённых выпусков"
 msgid "Saved episodes appear here."
 msgstr "Здесь появятся сохранённые выпуски."
 
-#: src/ui/login.rs:66
+#: src/ui/login.rs:63
 msgid "A native Spotify client."
 msgstr "Нативный клиент Spotify."
 
-#: src/ui/login.rs:74
+#: src/ui/login.rs:71
 msgid "Waiting for Spotify in your browser…"
 msgstr "Ожидание Spotify в браузере…"
 
-#: src/ui/login.rs:77
+#: src/ui/login.rs:74
 msgid "Didn't open? Open the sign-in page again"
 msgstr "Не открылось? Открой страницу входа ещё раз"
 
-#: src/ui/login.rs:106 src/ui/login.rs:141
+#: src/ui/login.rs:103 src/ui/login.rs:138
 msgid "Use the shared Spotify app instead"
 msgstr "Использовать общее приложение Spotify"
 
-#: src/ui/login.rs:120
+#: src/ui/login.rs:117
 msgid "Sign in with Spotify"
 msgstr "Войти через Spotify"
 
-#: src/ui/login.rs:126
+#: src/ui/login.rs:123
 msgid "Opens Spotify in your browser. Playback requires Premium."
 msgstr "Открывает Spotify в браузере. Для воспроизведения нужен Premium."
 
-#: src/ui/login.rs:159
+#: src/ui/login.rs:156
 msgid "Proxy Settings"
 msgstr "Настройки прокси"
 
 #. Translators: {version} is the app's version number, such as 1.2.0.
-#: src/ui/login.rs:180
+#: src/ui/login.rs:177
 #, rust-format
 msgid "Spotifast {version} • not affiliated with Spotify"
 msgstr "Spotifast {version} • не связан со Spotify"

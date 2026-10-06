@@ -554,39 +554,6 @@ pub fn play_glyph_offset(icon: Icon, icon_size: f32) -> Vec2 {
     }
 }
 
-/// The app's mark, the same picture as the app icon: the polished green
-/// disc with the play triangle, rasterised once per size by
-/// `util::app_icon_rgba` and drawn wherever the app shows its logo.
-pub fn logo(ui: &egui::Ui, center: egui::Pos2, diameter: f32) {
-    let ppp = ui.ctx().pixels_per_point();
-    // The raster keeps two pixels of margin on each side of the disc.
-    let pixels = (diameter * ppp).round() as usize + 4;
-    let id = egui::Id::new(("spotifast-logo", pixels));
-    let texture = ui
-        .ctx()
-        .data(|data| data.get_temp::<egui::TextureHandle>(id))
-        .unwrap_or_else(|| {
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [pixels, pixels],
-                &crate::util::app_icon_rgba(pixels),
-            );
-            let texture =
-                ui.ctx()
-                    .load_texture("spotifast-logo", image, egui::TextureOptions::LINEAR);
-            ui.ctx()
-                .data_mut(|data| data.insert_temp(id, texture.clone()));
-            texture
-        });
-    let side = pixels as f32 / ppp;
-    let rect = egui::Rect::from_center_size(center, Vec2::splat(side));
-    ui.painter().image(
-        texture.id(),
-        rect,
-        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-        Color32::WHITE,
-    );
-}
-
 pub fn circle_button(
     ui: &mut egui::Ui,
     icon: Icon,
@@ -898,37 +865,6 @@ pub fn subtle(ui: &mut egui::Ui, palette: &Palette, label: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The logo drawn in the app is the app icon's own picture, not a
-    /// disc in the theme's accent colour: it uploads the icon's pixels.
-    #[test]
-    fn the_logo_in_the_app_is_the_app_icon() {
-        // #given the logo drawn 40 points wide at twice the pixel density
-        let ctx = egui::Context::default();
-        ctx.set_pixels_per_point(2.0);
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            logo(ui, egui::pos2(40.0, 40.0), 40.0);
-        });
-
-        // #then the frame uploads the icon rasterised at that size
-        let uploaded = output
-            .textures_delta
-            .set
-            .values()
-            .flat_map(|deltas| deltas.iter())
-            .find_map(|delta| match &delta.image {
-                egui::ImageData::Color(image) if image.size == [84, 84] => Some(image.clone()),
-                _ => None,
-            })
-            .expect("the logo's texture");
-        let icon = crate::util::app_icon_rgba(84);
-        for (x, y) in [(42, 10), (47, 42), (42, 4)] {
-            let expected = &icon[(y * 84 + x) * 4..(y * 84 + x) * 4 + 4];
-            let got = uploaded.pixels[y * 84 + x].to_srgba_unmultiplied();
-            assert_eq!(&got[..], expected, "pixel {x},{y}");
-        }
-        output.textures_delta.clear();
-    }
 
     /// Palette files name the sixteen colours every app shares, and only
     /// those: a typo is an invalid file, not an ignored colour.

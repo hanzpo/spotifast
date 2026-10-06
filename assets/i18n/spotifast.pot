@@ -380,7 +380,7 @@ msgid "Couldn't fetch the lyrics: {error}"
 msgstr ""
 
 #: src/ui/lyrics.rs:151 src/ui/lyrics.rs:405 src/ui/lyrics.rs:620
-#: src/ui/settings.rs:429 src/ui/login.rs:98
+#: src/ui/settings.rs:429 src/ui/login.rs:95
 msgid "Try again"
 msgstr ""
 
@@ -1181,7 +1181,7 @@ msgctxt "playback status"
 msgid "Connecting"
 msgstr ""
 
-#: src/ui/settings.rs:423 src/ui/login.rs:89
+#: src/ui/settings.rs:423 src/ui/login.rs:86
 msgid "Connecting to Spotify…"
 msgstr ""
 
@@ -1397,7 +1397,7 @@ msgstr ""
 msgid "Follow system uses your desktop's light or dark appearance."
 msgstr ""
 
-#: src/ui/settings.rs:827 src/ui/settings.rs:1973
+#: src/ui/settings.rs:827 src/ui/settings.rs:1971
 msgid "Language"
 msgstr ""
 
@@ -1482,7 +1482,7 @@ msgid ""
 "macOS and Windows."
 msgstr ""
 
-#: src/ui/settings.rs:1246 src/ui/login.rs:241
+#: src/ui/settings.rs:1246 src/ui/login.rs:238
 msgid "Apply settings"
 msgstr ""
 
@@ -1780,16 +1780,16 @@ msgid "Source code"
 msgstr ""
 
 #. Translators: {query} is the text typed into the settings search field.
-#: src/ui/settings.rs:1929
+#: src/ui/settings.rs:1927
 #, rust-format
 msgid "No settings for “{query}”"
 msgstr ""
 
-#: src/ui/settings.rs:1930
+#: src/ui/settings.rs:1928
 msgid "Try fewer words, or check the spelling."
 msgstr ""
 
-#: src/ui/settings.rs:1946
+#: src/ui/settings.rs:1944
 msgctxt "language"
 msgid "System"
 msgstr ""
@@ -2116,7 +2116,7 @@ msgid "“{name}” will no longer appear in Your Library."
 msgstr ""
 
 #: src/ui/dialogs.rs:104 src/ui/dialogs.rs:147 src/ui/dialogs.rs:416
-#: src/ui/dialogs.rs:595 src/ui/login.rs:81
+#: src/ui/dialogs.rs:595 src/ui/login.rs:78
 msgid "Cancel"
 msgstr ""
 
@@ -2469,36 +2469,36 @@ msgstr ""
 msgid "Saved episodes appear here."
 msgstr ""
 
-#: src/ui/login.rs:66
+#: src/ui/login.rs:63
 msgid "A native Spotify client."
 msgstr ""
 
-#: src/ui/login.rs:74
+#: src/ui/login.rs:71
 msgid "Waiting for Spotify in your browser…"
 msgstr ""
 
-#: src/ui/login.rs:77
+#: src/ui/login.rs:74
 msgid "Didn't open? Open the sign-in page again"
 msgstr ""
 
-#: src/ui/login.rs:106 src/ui/login.rs:141
+#: src/ui/login.rs:103 src/ui/login.rs:138
 msgid "Use the shared Spotify app instead"
 msgstr ""
 
-#: src/ui/login.rs:120
+#: src/ui/login.rs:117
 msgid "Sign in with Spotify"
 msgstr ""
 
-#: src/ui/login.rs:126
+#: src/ui/login.rs:123
 msgid "Opens Spotify in your browser. Playback requires Premium."
 msgstr ""
 
-#: src/ui/login.rs:159
+#: src/ui/login.rs:156
 msgid "Proxy Settings"
 msgstr ""
 
 #. Translators: {version} is the app's version number, such as 1.2.0.
-#: src/ui/login.rs:180
+#: src/ui/login.rs:177
 #, rust-format
 msgid "Spotifast {version} • not affiliated with Spotify"
 msgstr ""
