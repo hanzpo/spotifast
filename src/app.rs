@@ -2748,7 +2748,6 @@ impl App {
         }
         self.toasts
             .retain(|toast| toast.created.elapsed() < TOAST_LIFETIME);
-        self.maybe_suggest_personal_app();
 
         if self.settings.check_for_updates
             && !self.offline
@@ -9507,27 +9506,6 @@ impl App {
         });
     }
 
-    fn maybe_suggest_personal_app(&mut self) {
-        if self.settings.personal_app_intro_seen
-            || self
-                .settings
-                .web_client_id
-                .as_deref()
-                .is_some_and(|id| !id.trim().is_empty())
-            || self.web_app.is_some()
-            || !self.is_connected()
-            || self.offline
-            || self.user.as_ref().and_then(|user| user.product.as_deref()) != Some("premium")
-            || self.dialog.is_some()
-            || self.show_devices
-            || self.settings.winamp_window
-            || self.page() == &Page::Settings
-        {
-            return;
-        }
-        self.dialog = Some(Dialog::PersonalAppIntro);
-    }
-
     /// Selected row indices for `page`.
     pub fn picked_rows(&self, page: &Page) -> Option<&std::collections::BTreeSet<usize>> {
         self.selection
@@ -15606,7 +15584,8 @@ mod tests {
     }
 
     #[test]
-    fn premium_listeners_discover_personal_apps_before_requests_slow_down() {
+    fn premium_listeners_are_not_offered_a_personal_app() {
+        // #given a Premium listener signed in with the default app
         let mut app = test_app("personal-app-intro");
         app.auth = AuthStatus::Connected {
             username: "listener".into(),
@@ -15615,93 +15594,12 @@ mod tests {
             product: Some("premium".into()),
             ..User::default()
         });
-        // Having seen an old transient toast does not count as seeing the intro.
-        app.settings.personal_app_nudge_at = Some("2026-09-09T10:00:00Z".into());
-        app.maybe_suggest_personal_app();
-        assert!(matches!(app.dialog, Some(Dialog::PersonalAppIntro)));
-        assert!(!app.settings.personal_app_intro_seen);
-        app.actions.push(Action::CloseDialog);
-        app.apply_actions(&egui::Context::default());
-        assert!(app.settings.personal_app_intro_seen);
-        assert!(app.dialog.is_none());
-        let saved = serde_json::to_string(&app.settings).unwrap();
-        let mut restarted = test_app("personal-app-intro-restart");
-        restarted.settings = serde_json::from_str(&saved).unwrap();
-        restarted.auth = app.auth.clone();
-        restarted.user = app.user.clone();
-        restarted.maybe_suggest_personal_app();
-        assert!(restarted.dialog.is_none(), "dismissal survives a restart");
-        assert!(app.toasts.is_empty(), "the old daily reminder is replaced");
-    }
 
-    #[test]
-    fn personal_app_intro_waits_for_a_premium_account_using_shared_access() {
-        let mut app = test_app("personal-app-intro-eligibility");
-        app.auth = AuthStatus::Connected {
-            username: "listener".into(),
-        };
-        for product in [None, Some("free"), Some("open")] {
-            app.user = Some(User {
-                product: product.map(str::to_string),
-                ..User::default()
-            });
-            app.maybe_suggest_personal_app();
-            assert!(app.dialog.is_none());
-        }
-        app.user = Some(User {
-            product: Some("premium".into()),
-            ..User::default()
-        });
-        app.settings.web_client_id = Some("personal-client".into());
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.settings.web_client_id = None;
-        app.web_app = Some("personal-client".into());
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.web_app = None;
-        app.auth = AuthStatus::SignedOut;
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.auth = AuthStatus::Connected {
-            username: "listener".into(),
-        };
-        app.offline = true;
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-    }
+        // #when a frame goes by
+        app.tick(&egui::Context::default());
 
-    #[test]
-    fn personal_app_intro_defers_while_another_surface_is_in_use() {
-        let mut app = test_app("personal-app-intro-defer");
-        app.auth = AuthStatus::Connected {
-            username: "listener".into(),
-        };
-        app.user = Some(User {
-            product: Some("premium".into()),
-            ..User::default()
-        });
-        app.dialog = Some(Dialog::Shortcuts);
-        app.maybe_suggest_personal_app();
-        assert!(matches!(app.dialog, Some(Dialog::Shortcuts)));
-        app.dialog = None;
-        app.show_devices = true;
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.show_devices = false;
-        app.settings.winamp_window = true;
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.settings.winamp_window = false;
-        app.open(Page::Settings);
-        app.maybe_suggest_personal_app();
-        assert!(app.dialog.is_none());
-        app.open(Page::Home);
-        app.maybe_suggest_personal_app();
-        assert!(matches!(app.dialog, Some(Dialog::PersonalAppIntro)));
-        app.handle_auth(AuthStatus::SignedOut);
-        assert!(app.dialog.is_none());
-        assert!(!app.settings.personal_app_intro_seen);
+        // #then no dialog asks them to set up a personal app
+        assert!(!matches!(app.dialog, Some(Dialog::PersonalAppIntro)));
     }
 
     fn play(uri: &str, at: &str) -> crate::api::models::PlayHistory {
