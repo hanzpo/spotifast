@@ -33,6 +33,11 @@ pub const PLAYBACK_REDIRECT_PORT: u16 = 8898;
 /// The public Web API application shared by spotify-player, ncspot, and
 /// Omarchy Spotify.
 pub const DEFAULT_WEB_CLIENT_ID: &str = "d420a117a32841c2b3474932e49fb54b";
+/// This build's own Web API application, used as the personal app when the
+/// settings name none. The shared app above still serves what Spotify keeps
+/// from Development Mode apps: its own playlists, recommendations, and
+/// related artists.
+pub const BUILT_IN_PERSONAL_CLIENT_ID: &str = "a4ef32611842420ba3e410f0294123e0";
 pub const WEB_REDIRECT_PORT: u16 = 8989;
 
 pub const REDIRECT_PATH: &str = "/login";
