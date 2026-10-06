@@ -6,7 +6,7 @@ msgstr ""
 "Project-Id-Version: Spotifast\n"
 "Report-Msgid-Bugs-To: https://github.com/crmne/spotifast/issues/new?"
 "template=translation.yml\n"
-"POT-Creation-Date: 2026-10-05 21:33-0400\n"
+"POT-Creation-Date: 2026-10-05 21:34-0400\n"
 "PO-Revision-Date: 2026-09-09 13:30+0000\n"
 "Last-Translator: Spotifast contributors\n"
 "Language-Team: Simplified Chinese\n"
@@ -2501,12 +2501,8 @@ msgid "Sign in with Spotify"
 msgstr "使用 Spotify 登录"
 
 #: src/ui/login.rs:126
-msgid ""
-"Sign in through your browser. Spotifast never sees your password. Local "
-"playback needs Spotify Premium."
-msgstr ""
-"通过浏览器登录。Spotifast 永远不会看到你的密码。本地播放需要 Spotify "
-"Premium。"
+msgid "Opens Spotify in your browser. Playback requires Premium."
+msgstr "在浏览器中打开 Spotify。播放需要 Premium。"
 
 #: src/ui/login.rs:159
 msgid "Proxy Settings"
@@ -3055,6 +3051,13 @@ msgstr "晚上好"
 #: src/window.rs:12
 msgid "On Wayland, use your desktop's Keep Above shortcut or window rule."
 msgstr "在 Wayland 上，请使用桌面环境的“保持在最上层”快捷键或窗口规则。"
+
+#~ msgid ""
+#~ "Sign in through your browser. Spotifast never sees your password. Local "
+#~ "playback needs Spotify Premium."
+#~ msgstr ""
+#~ "通过浏览器登录。Spotifast 永远不会看到你的密码。本地播放需要 Spotify "
+#~ "Premium。"
 
 #~ msgid "MacBook notch interactive widget"
 #~ msgstr "MacBook刘海交互式小组件"

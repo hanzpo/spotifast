@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Spotifast\n"
 "Report-Msgid-Bugs-To: https://github.com/crmne/spotifast/issues/new?"
 "template=translation.yml\n"
-"POT-Creation-Date: 2026-10-05 21:33-0400\n"
+"POT-Creation-Date: 2026-10-05 21:34-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2490,9 +2490,7 @@ msgid "Sign in with Spotify"
 msgstr ""
 
 #: src/ui/login.rs:126
-msgid ""
-"Sign in through your browser. Spotifast never sees your password. Local "
-"playback needs Spotify Premium."
+msgid "Opens Spotify in your browser. Playback requires Premium."
 msgstr ""
 
 #: src/ui/login.rs:159
