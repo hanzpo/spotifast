@@ -21,8 +21,7 @@ current release.
   on Spotify's own pages. A proxy password, if you set one, uses the same
   store.
 - **Settings and history.** Settings, window positions, recent plays, the
-  last session, skins, themes and MilkDrop presets live in the config
-  directory.
+  last session, skins and themes live in the config directory.
 - **Caches.** Downloaded audio, artwork, lyrics and library metadata live in
   the cache directory and can be deleted at any time.
 - **Log.** `spotifast.log` records errors and diagnostics. It stays on your
@@ -44,8 +43,8 @@ Spotifast connects only to the services below.
   song, Spotifast sends its artist, title, album and length to
   [lrclib.net](https://lrclib.net). Nothing identifying you is included.
 - **GitHub.** Once a day, Spotifast asks GitHub for the latest release. You
-  can turn automatic checks off in Settings. Downloading an update, and the
-  first opening of MilkDrop, also fetch files from GitHub. No Spotify data is
+  can turn automatic checks off in Settings. Downloading an update also fetches
+  files from GitHub. No Spotify data is
   sent.
 - **Your local network.** Spotifast looks for Spotify Connect speakers over
   mDNS and talks to the ones you choose.

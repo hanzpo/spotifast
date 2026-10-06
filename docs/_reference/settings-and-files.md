@@ -14,7 +14,6 @@ Spotifast follows each platform's conventions. On Linux:
 | --- | --- | --- |
 | Settings | `~/.config/spotifast/settings.json` | Yes, you lose preferences |
 | Winamp skins | `~/.config/spotifast/skins/` | Yes, you add them again |
-| MilkDrop presets | `~/.config/spotifast/milkdrop/` | Yes, you fetch them again |
 | Spotify grants (available since 0.8.0) | System credential store | Use Sign out in Settings |
 | Credential revocation markers (available since 0.8.0) | `~/.local/state/spotifast/credential-storage/` | Keep after a failed sign-out deletion |
 | Legacy shared Web API grant | `~/.local/state/spotifast/shared_web_api_token.json` | Removed after migration or sign-out |
@@ -258,12 +257,6 @@ main fields are:
 | `mono` | `false` | Play both channels the same |
 | `playlist_shaded` | `false` | The playlist window is rolled up to its title bar |
 | `winamp_shaded` | `false` | The main window is rolled up to its title bar |
-| `milkdrop_open` | `false` | The MilkDrop window is open |
-| `milkdrop_seconds` | `30` | How long each MilkDrop preset plays |
-| `milkdrop_fps` | `60` | MilkDrop frame rate; `0` is uncapped |
-| `milkdrop_screen_hz` | `0` | Last reported display refresh rate |
-| `milkdrop_fullscreen` | `false` | The MilkDrop window fills the screen |
-| `milkdrop_size` | `640, 480` | The MilkDrop window's size in points |
 | `keep_playing_in_background` | `true` | Close to tray (Windows and Linux; macOS always quits) |
 | `mac_notch_widget` | `false` | Show interactive Now Playing widget when hovering over the MacBook notch (macOS only) |
 | `web_client_id` | none | Optional personal Spotify app id used alongside shared coverage |

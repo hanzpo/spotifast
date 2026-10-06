@@ -328,21 +328,6 @@ pub struct Settings {
     pub eq_shaded: bool,
     /// The main window is rolled up to its title bar.
     pub winamp_shaded: bool,
-    /// The MilkDrop window is open (its own window, not part of the skin).
-    pub milkdrop_open: bool,
-    /// How long each preset plays before the next, in seconds.
-    pub milkdrop_seconds: u32,
-    /// How many frames a second the MilkDrop window draws; 0 is uncapped.
-    pub milkdrop_fps: u32,
-    /// Last reported MilkDrop screen refresh rate. The first value sets the
-    /// default frame rate; this field is not directly configurable.
-    pub milkdrop_screen_hz: u32,
-    /// The picture's inner resolution: 1 full, 2 half, 4 quarter.
-    pub milkdrop_scale: u32,
-    /// The MilkDrop window fills the screen.
-    pub milkdrop_fullscreen: bool,
-    /// The MilkDrop window's size in logical points, when not full-screen.
-    pub milkdrop_size: [f32; 2],
     /// Which proxy to use. Older files without this field stay on `system`.
     #[serde(default, skip_serializing_if = "proxy_mode_is_system")]
     pub proxy_mode: ProxyMode,
@@ -446,13 +431,6 @@ impl Default for Settings {
             playlist_shaded: false,
             eq_shaded: false,
             winamp_shaded: false,
-            milkdrop_open: false,
-            milkdrop_seconds: crate::milkdrop::DEFAULT_SECONDS,
-            milkdrop_fps: crate::milkdrop::DEFAULT_FPS,
-            milkdrop_screen_hz: 0,
-            milkdrop_scale: 1,
-            milkdrop_fullscreen: false,
-            milkdrop_size: crate::milkdrop::DEFAULT_SIZE,
             proxy_mode: ProxyMode::System,
             proxy: String::new(),
             proxy_host: String::new(),
@@ -1172,6 +1150,15 @@ mod tests {
     }
 
     #[test]
+    fn settings_from_before_milkdrop_was_removed_still_load() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"milkdrop_open":true,"milkdrop_seconds":10,"milkdrop_fps":60,"milkdrop_screen_hz":120,"milkdrop_scale":1,"milkdrop_fullscreen":false,"milkdrop_size":[640.0,480.0],"tracklist_compact":true}"#,
+        )
+        .unwrap();
+        assert!(settings.tracklist_compact);
+    }
+
+    #[test]
     fn older_settings_keep_the_chosen_skin() {
         let settings: Settings = serde_json::from_str(r#"{"skin":"A.wsz"}"#).unwrap();
         assert!(!settings.random_skin);
@@ -1495,8 +1482,6 @@ pub struct SessionState {
     pub queue_tab: Option<String>,
     /// Last outer position of the Winamp window.
     pub winamp_pos: Option<[f32; 2]>,
-    /// Last outer position of the MilkDrop window.
-    pub milkdrop_pos: Option<[f32; 2]>,
     /// The window mode fullscreen lyrics left, when the app closed while
     /// showing them. eframe restores the window full screen, so the next
     /// start returns it to this mode instead.

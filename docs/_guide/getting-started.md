@@ -130,32 +130,25 @@ Build the single binary with Rust 1.98 or newer:
 cargo install --git https://github.com/crmne/spotifast --locked
 ```
 
-MilkDrop uses libprojectM, which is built from source. This needs CMake, a C++
-compiler, and libclang. To build without MilkDrop or those tools, add
-`--no-default-features`. On Linux, you also need the development packages for
-ALSA, PulseAudio or PipeWire, and the windowing libraries. On Arch:
+On Linux, you need the development packages for ALSA, PulseAudio or PipeWire,
+and the windowing libraries. On Arch:
 
 ```bash
-sudo pacman -S --needed alsa-lib libpulse libxkbcommon wayland cmake clang
+sudo pacman -S --needed alsa-lib libpulse libxkbcommon wayland
 ```
 
 On Debian or Ubuntu:
 
 ```bash
-sudo apt install libasound2-dev libpulse-dev libxkbcommon-dev libwayland-dev \
-  cmake clang libclang-dev
+sudo apt install libasound2-dev libpulse-dev libxkbcommon-dev libwayland-dev
 ```
 
 On Fedora:
 
 ```bash
 sudo dnf install alsa-lib-devel pulseaudio-libs-devel libxkbcommon-devel \
-  wayland-devel cmake clang clang-devel
+  wayland-devel
 ```
-
-On Windows, libprojectM is built with Visual Studio 2022, CMake, LLVM, and
-vcpkg (`vcpkg install glew:x64-windows-static`, with
-`VCPKG_INSTALLATION_ROOT` pointing at the vcpkg folder).
 
 With [Nix](https://nixos.org), `nix develop` in a checkout provides all of it,
 along with the exact toolchain `rust-toolchain.toml` pins.

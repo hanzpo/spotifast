@@ -333,15 +333,6 @@ fn format_devices(snapshot: &str) -> String {
 pub(crate) fn run() -> eframe::Result<()> {
     #[cfg(target_os = "linux")]
     configure_pulseaudio_properties();
-    // A MilkDrop child launch is a bare visualiser window, not the app: it has
-    // its own event loop and OpenGL context, reads the sound from a shared
-    // buffer, and never touches the app's state. Handle it before anything
-    // else, including the argument parser, which does not know its flags.
-    #[cfg(feature = "milkdrop")]
-    if let Some(args) = spotifast::milkdrop::child::Args::parse() {
-        std::process::exit(spotifast::milkdrop::child::run(args));
-    }
-
     let cli =
         Cli::from_arg_matches(&Cli::command().get_matches()).unwrap_or_else(|error| error.exit());
     // Demo mode invents plays, settings, and a signed-in account. Without a
@@ -743,8 +734,7 @@ fn native_options(
         Some(mini) => {
             let level = app::on_top_window_level(mini.on_top);
             // See-through, for skins that are not rectangles; the skin
-            // paints every pixel that is the window. MilkDrop runs in its own
-            // process, so nothing else shares this window's surface.
+            // paints every pixel that is the window.
             let viewport = viewport
                 .with_decorations(false)
                 .with_transparent(true)
