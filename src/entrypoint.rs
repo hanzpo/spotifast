@@ -556,6 +556,8 @@ pub(crate) fn run() -> eframe::Result<()> {
                         spotifast::notch::init();
                         let ctx_notch = cc.egui_ctx.clone();
                         spotifast::notch::set_waker(move || ctx_notch.request_repaint());
+
+                        spotifast::mac_glass::install(cc);
                     }
                     app.attach(&cc.egui_ctx);
                     #[cfg(windows)]
@@ -667,6 +669,9 @@ fn native_options(fullscreen: bool, inner_size: Option<[f32; 2]>) -> eframe::Nat
         .with_fullsize_content_view(true)
         .with_titlebar_shown(false)
         .with_title_shown(false)
+        // macOS: clear where the interface leaves room for the sidebar's
+        // glass, which AppKit draws beneath (src/mac_glass.rs).
+        .with_transparent(cfg!(target_os = "macos"))
         // Windows has no equivalent to macOS's floating traffic lights.
         // Removing its decorations lets the app surface fill the window.
         .with_decorations(main_window_decorated(spotifast::window::custom_titlebar()))
@@ -769,6 +774,10 @@ mod native_window_tests {
         assert_eq!(options.viewport.fullsize_content_view, Some(true));
         assert_eq!(options.viewport.titlebar_shown, Some(false));
         assert_eq!(options.viewport.title_shown, Some(false));
+        assert_eq!(
+            options.viewport.transparent,
+            Some(cfg!(target_os = "macos"))
+        );
     }
 
     /// The window asks for vsync: AppKit resize animations need it, and on
@@ -967,6 +976,17 @@ impl eframe::App for Shell {
         self.persist_memory
     }
 
+    /// Clear on macOS, where the window is transparent so the sidebar's
+    /// glass shows through; every other surface is painted opaque.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        if cfg!(target_os = "macos") {
+            [0.0; 4]
+        } else {
+            // The window paints itself over eframe's own ground.
+            egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+        }
+    }
+
     #[cfg(feature = "demo")]
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         if let Some(drag) = self.drag.as_mut() {
@@ -1064,11 +1084,6 @@ impl eframe::App for Shell {
         #[cfg(windows)]
         self.thumbbar
             .sync(app.thumb_state(ui.ctx().system_theme() != Some(egui::Theme::Light)));
-    }
-
-    /// The window paints itself over eframe's own ground.
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

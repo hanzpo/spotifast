@@ -36,6 +36,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let connecting = matches!(app.auth, AuthStatus::Connecting | AuthStatus::Starting)
         || (app.is_connected() && app.user.is_none());
     if !signed_in {
+        #[cfg(target_os = "macos")]
+        crate::mac_glass::show_sidebar(None, app.palette.window);
         player_bar::end_tint_session(ctx);
         login::show(app, ui, connecting);
         toasts(app, ctx, 20.0);
@@ -55,12 +57,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ),
         );
     }
-    player_bar::show(app, ui);
-    if app.lyrics_fullscreen.is_some() {
-        lyrics::fullscreen(app, ui);
+    let mut glass = None;
+    let page = if app.lyrics_fullscreen.is_some() {
+        lyrics::fullscreen(app, ui)
     } else {
         if app.settings.sidebar_visible {
-            sidebar::show(app, ui);
+            glass = sidebar::show(app, ui);
         }
         if app.show_queue_panel {
             queue::side_panel(app, ui);
@@ -68,9 +70,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         if app.show_lyrics_panel {
             lyrics::side_panel(app, ui);
         }
-        central(app, ui);
+        let page = central(app, ui);
         keep_room_for_panels(app, ctx);
-    }
+        page
+    };
+    player_bar::show(app, ui, page);
+    #[cfg(target_os = "macos")]
+    crate::mac_glass::show_sidebar(
+        glass.map(|rect: Rect| rect * ctx.zoom_factor()),
+        app.palette.window,
+    );
+    #[cfg(not(target_os = "macos"))]
+    let _ = glass;
     devices::popup(app, ctx);
     dialogs::show(app, ctx);
     widgets::drag_ghost(ctx, &app.palette, app.locale);
@@ -201,7 +212,8 @@ where
     }
 }
 
-fn central(app: &mut App, ui: &mut egui::Ui) {
+/// The page, and the rect it fills.
+fn central(app: &mut App, ui: &mut egui::Ui) -> Rect {
     let palette = app.palette;
     egui::CentralPanel::default()
         .frame(Frame::new().fill(palette.window))
@@ -244,11 +256,15 @@ fn central(app: &mut App, ui: &mut egui::Ui) {
                                 Page::Queue => queue::page(app, ui),
                                 Page::Settings => settings::show(app, ui),
                             }
+                            // The last rows scroll clear of the player.
+                            ui.add_space(player_bar::page_clearance());
                         });
                 },
             );
             header_shadow(ui, scroll.inner_rect, scroll.state.offset.y, palette.dark);
-        });
+        })
+        .response
+        .rect
 }
 
 /// The shadow the header casts on a page scrolled under it, deepening over

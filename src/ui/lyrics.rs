@@ -281,7 +281,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
     app.lyrics_line_shown = Some(active);
 }
 
-pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
+/// The full-window lyrics, and the rect they fill.
+pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) -> Rect {
     egui::CentralPanel::default()
         .frame(Frame::new().fill(theme::Palette::dark().window))
         .show(ui, |ui| {
@@ -303,7 +304,9 @@ pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
             track_heading(app, &mut content);
             content.add_space(16.0);
             fullscreen_contents(app, &mut content);
-        });
+        })
+        .response
+        .rect
 }
 
 /// The widest the lyrics get beside the cover, so lines stay easy to read.

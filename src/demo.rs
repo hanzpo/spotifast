@@ -1570,7 +1570,10 @@ mod tests {
 
             app.remote = None;
             assert!(app.now_playing().is_none());
-            let render = |app: &mut App, ui: &mut egui::Ui| crate::ui::player_bar::show(app, ui);
+            let render = |app: &mut App, ui: &mut egui::Ui| {
+                let page = ui.max_rect();
+                crate::ui::player_bar::show(app, ui, page);
+            };
             view_frame(&ctx, &mut app, vec![], render);
             let painted = view_frame(&ctx, &mut app, vec![], render);
             for source in ["Nothing playing", "Pick a song, album, or playlist"] {
@@ -2063,7 +2066,9 @@ mod tests {
     #[test]
     fn the_podcasts_shelf_leaves_out_audiobooks() {
         let (ctx, mut app) = accessible_app("library-podcasts-audiobooks");
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let chip = painted
@@ -2256,7 +2261,9 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| crate::ui::sidebar::show(app, ui),
+                |ui| {
+                    crate::ui::sidebar::show(app, ui);
+                },
             );
             output.textures_delta.clear();
             output
@@ -2480,7 +2487,9 @@ mod tests {
         let (ctx, mut app) = accessible_app("library-grid-double-click");
         app.settings.sidebar_grid = true;
         app.open(Page::Search);
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let card = sidebar_text(&painted, "Sunday morning").center();
@@ -2508,7 +2517,9 @@ mod tests {
             (LibraryShelf::Podcasts, "Podcasts", Page::Podcasts),
         ] {
             let (ctx, mut app) = accessible_app(&format!("library-sort-paging-{shelf:?}"));
-            let view = crate::ui::sidebar::show;
+            let view = |app: &mut App, ui: &mut egui::Ui| {
+                crate::ui::sidebar::show(app, ui);
+            };
             app.settings.library_sort.insert(shelf, LibrarySort::Name);
             app.library.albums.next_offset = Some(50);
             app.library.artists.complete = false;
@@ -3965,7 +3976,10 @@ mod tests {
             ..LocalState::default()
         };
         app.track_cache.clear();
-        let view = crate::ui::player_bar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            let page = ui.max_rect();
+            crate::ui::player_bar::show(app, ui, page);
+        };
         for cached in [false, true] {
             if cached {
                 // A partial response must not turn working links back into text.
@@ -4952,6 +4966,15 @@ mod tests {
             [Action::Open(Page::LikedSongs)]
         ));
         app.backend.shutdown();
+    }
+
+    /// The middle of the floating player's cover, where a drag of the
+    /// playing song starts.
+    fn player_cover(ctx: &egui::Context) -> egui::Pos2 {
+        let capsule = egui::AreaState::load(ctx, egui::Id::new("player-bar"))
+            .and_then(|state| state.rect().is_finite().then(|| state.rect()))
+            .expect("the player was drawn");
+        egui::pos2(capsule.left() + 46.0, capsule.center().y)
     }
 
     fn frame_events(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>) {
@@ -6052,7 +6075,9 @@ mod tests {
         for compact in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("sidebar-double-click-{compact}"));
             app.settings.sidebar_compact = compact;
-            let view = crate::ui::sidebar::show;
+            let view = |app: &mut App, ui: &mut egui::Ui| {
+                crate::ui::sidebar::show(app, ui);
+            };
             view_frame(&ctx, &mut app, vec![], view);
             let painted = view_frame(&ctx, &mut app, vec![], view);
             let name = sidebar_text(&painted, "Sunday morning").center();
@@ -6075,7 +6100,9 @@ mod tests {
     #[test]
     fn single_clicking_a_sidebar_row_only_navigates() {
         let (ctx, mut app) = accessible_app("sidebar-single-click");
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Sunday morning").center();
@@ -6098,7 +6125,9 @@ mod tests {
     #[test]
     fn double_clicking_a_sidebar_liked_row_plays_the_collection() {
         let (ctx, mut app) = accessible_app("sidebar-double-click-liked");
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Liked Songs").center();
@@ -6123,7 +6152,9 @@ mod tests {
             RootlistEntry::Playlist("spotify:playlist:pl2".into()),
             RootlistEntry::FolderEnd,
         ];
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Focus").center();
@@ -6140,7 +6171,9 @@ mod tests {
     #[test]
     fn double_clicking_a_sidebar_cover_plays_once() {
         let (ctx, mut app) = accessible_app("sidebar-double-click-cover");
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Sunday morning");
@@ -6165,7 +6198,9 @@ mod tests {
     #[test]
     fn clicking_the_cover_of_the_playing_playlist_pauses() {
         let (ctx, mut app) = accessible_app("sidebar-cover-pause");
-        let view = crate::ui::sidebar::show;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::sidebar::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         // The demo's remote snapshot plays the "Late night focus" playlist.
@@ -6220,7 +6255,7 @@ mod tests {
             frame(&ctx, &mut app);
         }
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_cover(&ctx);
         frame_events(
             &ctx,
             &mut app,
@@ -6294,7 +6329,7 @@ mod tests {
 
         // Drag the now-playing song from the bottom-left player, same
         // starting point as the equivalent playlist-insert test.
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_cover(&ctx);
         frame_events(
             &ctx,
             &mut app,
@@ -6364,7 +6399,7 @@ mod tests {
         // close/save buttons and tab chips.
         let end = egui::pos2(1100.0, 300.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_cover(&ctx);
         frame_events(
             &ctx,
             &mut app,
@@ -6790,10 +6825,7 @@ mod tests {
         frame_events(
             &ctx,
             &mut app,
-            vec![egui::Event::PointerMoved(egui::pos2(
-                start.x,
-                800.0 - crate::theme::PLAYER_BAR_HEIGHT - 14.0,
-            ))],
+            vec![egui::Event::PointerMoved(egui::pos2(start.x, 800.0 - 14.0))],
         );
         for _ in 0..400 {
             frame_events(&ctx, &mut app, vec![]);
@@ -6902,7 +6934,7 @@ mod tests {
         let button = bounds_of(button);
 
         let drag_to = |app: &mut App, end: egui::Pos2| {
-            let start = egui::pos2(40.0, 755.0);
+            let start = player_cover(&ctx);
             frame_events(
                 &ctx,
                 app,
@@ -6993,7 +7025,7 @@ mod tests {
         let target_row = row_rect("Queued 1");
         let end = egui::pos2(target_row.left() + 130.0, target_row.top() + 1.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_cover(&ctx);
         frame_events(
             &ctx,
             &mut app,
@@ -7071,7 +7103,7 @@ mod tests {
         // still appends at the end, ignoring the row it landed on.
         let end = egui::pos2(bounds.x0 as f32 + 130.0, bounds.y0 as f32 + 2.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_cover(&ctx);
         frame_events(
             &ctx,
             &mut app,
@@ -7407,7 +7439,7 @@ mod tests {
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let target = row(&tree, "Liked Songs").center();
             app.saved.insert("spotify:track:trk0".into(), false);
-            let source = egui::pos2(40.0, 755.0);
+            let source = player_cover(&ctx);
             accessible_frame(
                 &ctx,
                 &mut app,
@@ -7512,7 +7544,7 @@ mod tests {
                         let row = row_rect(source_item.name());
                         egui::pos2(row.left() + 80.0, row.center().y)
                     } else {
-                        egui::pos2(40.0, 755.0)
+                        player_cover(&ctx)
                     };
                     let row = row_rect(&format!("Destination {}", position.min(3)));
                     let end = egui::pos2(
@@ -7954,10 +7986,9 @@ mod tests {
             accessible_frame(
                 &ctx,
                 &mut app,
-                vec![egui::Event::PointerMoved(egui::pos2(
-                    112.0,
-                    800.0 - crate::theme::PLAYER_BAR_HEIGHT - 14.0,
-                ))],
+                // Inside the list's lower edge, which on macOS sits in
+                // the glass, above the window's foot.
+                vec![egui::Event::PointerMoved(egui::pos2(112.0, 800.0 - 26.0))],
             );
             for _ in 0..400 {
                 accessible_frame(&ctx, &mut app, vec![]);
@@ -8453,10 +8484,11 @@ mod tests {
                     };
                     let side = rect(&format!("{panel}-panel"));
                     let library = rect("sidebar");
-                    let player = rect("player-bar");
                     assert_eq!(side.top(), library.top(), "{panel} at {width} in {theme}");
                     assert_eq!(side.top(), 0.0, "{panel} must start at the window top");
-                    assert_eq!(side.bottom(), player.top());
+                    // The player floats over the page, so both run to the foot.
+                    assert_eq!(side.bottom(), 800.0);
+                    assert_eq!(library.bottom(), 800.0);
                     let search = ctx.read_response(egui::Id::new("global-search")).unwrap();
                     assert!(side.top() < search.rect.top());
                 }

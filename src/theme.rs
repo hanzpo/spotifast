@@ -374,6 +374,12 @@ fn apply_to_style(style: &mut egui::Style, palette: &Palette) {
 fn install_fonts(ctx: &egui::Context) {
     let emoji = egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji.ttf"));
     let mut fonts = fastframe_fonts::FontSetup::default()
+        // San Francisco on macOS, so text reads as the system's own.
+        .primary(if cfg!(target_os = "macos") {
+            fastframe_fonts::Primary::System
+        } else {
+            fastframe_fonts::Primary::Inter
+        })
         .companion("noto_emoji", std::sync::Arc::new(emoji))
         .definitions();
     text_rendering().apply_to(&mut fonts);

@@ -1,6 +1,6 @@
-//! The now-playing bar along the bottom of the window.
+//! The now-playing bar: a glass capsule floating over the bottom of the page.
 
-use egui::{Align, Color32, Frame, Layout, Margin, Rect, Sense, UiBuilder, Vec2, pos2, vec2};
+use egui::{Align, Color32, Layout, Rect, Sense, UiBuilder, Vec2, pos2, vec2};
 
 use crate::app::{App, NowPlaying};
 use crate::i18n::gettext;
@@ -21,51 +21,105 @@ pub(crate) fn end_tint_session(ctx: &egui::Context) {
     ctx.data_mut(|data| data.remove::<u64>(egui::Id::new(TINT_SESSION_ID)));
 }
 
-pub fn show(app: &mut App, ui: &mut egui::Ui) {
+/// How far the capsule floats in from the page's edges.
+pub const MARGIN: f32 = 12.0;
+/// The capsule's corner radius.
+const RADIUS: u8 = 22;
+/// How opaque the capsule's glass is over the page scrolling beneath it.
+const GLASS_ALPHA: u8 = 214;
+
+/// The room a page leaves at its foot so its last rows can scroll clear of
+/// the capsule.
+pub const fn page_clearance() -> f32 {
+    theme::PLAYER_BAR_HEIGHT + 2.0 * MARGIN
+}
+
+/// Draws the capsule over the foot of `page`.
+pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
     let palette = app.palette;
     let fill = eased_fill(ui.ctx(), palette.panel, app.now_playing_tint());
-    egui::Panel::bottom("player-bar")
-        .exact_size(theme::PLAYER_BAR_HEIGHT)
-        .resizable(false)
-        .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(fill)
-                .inner_margin(Margin::symmetric(16, 0)),
-        )
-        .show(ui, |ui| {
-            let rect = ui.max_rect();
-            let now = app.now_playing();
-            ui.painter().hline(
-                rect.x_range(),
-                rect.top() + 0.5,
-                egui::Stroke::new(1.0, palette.outline),
+    let [r, g, b, _] = fill.to_srgba_unmultiplied();
+    let glass = Color32::from_rgba_unmultiplied(r, g, b, GLASS_ALPHA);
+    let capsule = Rect::from_min_max(
+        pos2(
+            page.left() + MARGIN,
+            page.bottom() - MARGIN - theme::PLAYER_BAR_HEIGHT,
+        ),
+        pos2(page.right() - MARGIN, page.bottom() - MARGIN),
+    );
+    egui::Area::new(egui::Id::new("player-bar"))
+        .fixed_pos(capsule.min)
+        .order(egui::Order::Middle)
+        .constrain(false)
+        .show(ui.ctx(), |ui| {
+            // The capsule takes its own clicks, so none reach the page.
+            ui.allocate_rect(capsule, Sense::click());
+            let painter = ui.painter();
+            let radius = egui::CornerRadius::same(RADIUS);
+            painter.add(
+                egui::epaint::Shadow {
+                    offset: [0, 10],
+                    blur: 30,
+                    spread: 0,
+                    color: Color32::from_black_alpha(if palette.dark { 110 } else { 40 }),
+                }
+                .as_shape(capsule, radius),
             );
-            let width = rect.width();
-            let side = (width * 0.3).clamp(200.0, 420.0);
-            let cy = rect.center().y;
-            let left = Rect::from_min_max(rect.min, pos2(rect.left() + side, rect.bottom()));
-            let center = Rect::from_min_max(
-                pos2(rect.left() + side, rect.top()),
-                pos2(rect.right() - side, rect.bottom()),
+            painter.rect_filled(capsule, radius, glass);
+            // The glass's rim, and the light catching its upper edge.
+            let rim = if palette.dark {
+                Color32::from_white_alpha(26)
+            } else {
+                Color32::from_black_alpha(18)
+            };
+            painter.rect_stroke(
+                capsule,
+                radius,
+                egui::Stroke::new(1.0, rim),
+                egui::StrokeKind::Inside,
             );
-
-            // egui's cross-axis centring is unreliable across nested layouts of
-            // mixed heights, so each region is placed in an explicit band that
-            // is sized to its content and centred on the bar's midline.
-            now_playing_block(app, ui, left, now.as_ref());
-
-            transport(app, ui, now.as_ref(), center);
-
-            let right_band =
-                Rect::from_min_size(pos2(rect.right() - side, cy - 15.0), vec2(side, 30.0));
-            let mut right_ui = ui.new_child(
+            let sheen = Rect::from_min_size(capsule.min, vec2(capsule.width(), 22.0));
+            super::widgets::paint_vertical_gradient(
+                ui,
+                sheen.shrink2(vec2(RADIUS as f32, 1.0)),
+                Color32::from_white_alpha(if palette.dark { 10 } else { 40 }),
+                Color32::TRANSPARENT,
+            );
+            let mut inside = ui.new_child(
                 UiBuilder::new()
-                    .max_rect(right_band)
-                    .layout(Layout::right_to_left(Align::Center)),
+                    .max_rect(capsule.shrink2(vec2(14.0, 0.0)))
+                    .layout(Layout::left_to_right(Align::Center)),
             );
-            extras(app, &mut right_ui, now.as_ref());
+            contents(app, &mut inside);
         });
+}
+
+fn contents(app: &mut App, ui: &mut egui::Ui) {
+    let rect = ui.max_rect();
+    let now = app.now_playing();
+    let width = rect.width();
+    let side = (width * 0.3).clamp(200.0, 420.0);
+    let cy = rect.center().y;
+    let left = Rect::from_min_max(rect.min, pos2(rect.left() + side, rect.bottom()));
+    let center = Rect::from_min_max(
+        pos2(rect.left() + side, rect.top()),
+        pos2(rect.right() - side, rect.bottom()),
+    );
+
+    // egui's cross-axis centring is unreliable across nested layouts of
+    // mixed heights, so each region is placed in an explicit band that
+    // is sized to its content and centred on the bar's midline.
+    now_playing_block(app, ui, left, now.as_ref());
+
+    transport(app, ui, now.as_ref(), center);
+
+    let right_band = Rect::from_min_size(pos2(rect.right() - side, cy - 15.0), vec2(side, 30.0));
+    let mut right_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(right_band)
+            .layout(Layout::right_to_left(Align::Center)),
+    );
+    extras(app, &mut right_ui, now.as_ref());
 }
 
 /// Ease the final fill's RGB. Untinted custom panels keep their alpha while

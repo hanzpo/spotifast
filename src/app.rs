@@ -19799,7 +19799,10 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| crate::ui::player_bar::show(app, ui),
+                |ui| {
+                    let page = ui.max_rect();
+                    crate::ui::player_bar::show(app, ui, page)
+                },
             );
             output.textures_delta.clear();
             app.apply_actions(ctx);

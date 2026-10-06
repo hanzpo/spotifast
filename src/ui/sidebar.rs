@@ -1,6 +1,6 @@
 //! The left panel: navigation and Your Library.
 
-use egui::{Align, CornerRadius, Frame, Layout, Margin, Rect, Sense, Vec2, pos2, vec2};
+use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, Rect, Sense, Vec2, pos2, vec2};
 
 use crate::api::models::pick_image;
 use crate::app::App;
@@ -469,8 +469,11 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
     }
 }
 
-pub fn show(app: &mut App, ui: &mut egui::Ui) {
+/// Draws the sidebar and answers the column its glass fills, on macOS.
+pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Rect> {
     let palette = app.palette;
+    let glass = cfg!(target_os = "macos");
+    let inset = if glass { GLASS_INSET as i8 } else { 0 };
     let expanded_art = has_expanded_art(app);
     let floating_art = app.settings.sidebar_grid && expanded_art;
     // The traffic lights float over the top-left of the sidebar now, so the
@@ -493,12 +496,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .default_size(app.settings.sidebar_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
-        .frame(Frame::new().fill(palette.panel).inner_margin(Margin {
-            left: 12,
-            right: 8,
-            top,
-            bottom: if expanded_art { 0 } else { 8 },
-        }));
+        .frame(
+            Frame::new()
+                // On macOS the glass beneath shows through.
+                .fill(if glass {
+                    Color32::TRANSPARENT
+                } else {
+                    palette.panel
+                })
+                .inner_margin(Margin {
+                    left: 12 + inset,
+                    right: 8,
+                    top,
+                    bottom: if expanded_art { inset } else { 8 + inset },
+                }),
+        );
     let response = panel.show(ui, |ui| {
         let art_rect = expanded_art.then(|| expanded_art_rect(ui));
         if let Some(rect) = art_rect.filter(|_| !floating_art) {
@@ -519,7 +531,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.settings.sidebar_width = width;
         app.actions.push(Action::SettingsChanged);
     }
+    glass.then_some(response.response.rect)
 }
+
+/// How far the glass sits in from the window's edges.
+#[cfg(target_os = "macos")]
+const GLASS_INSET: f32 = crate::mac_glass::INSET;
+#[cfg(not(target_os = "macos"))]
+const GLASS_INSET: f32 = 0.0;
 
 fn expanded_art_rect(ui: &egui::Ui) -> Rect {
     let side = expanded_art_side(ui);
