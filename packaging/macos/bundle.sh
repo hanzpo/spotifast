@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Spotifast.app from a GUI binary, on a macOS machine.
+# Build Spotlite.app from a GUI binary, on a macOS machine.
 #
 #   packaging/macos/bundle.sh <binary> <output.app> <version>
 #
@@ -18,7 +18,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
-executable=Spotifast
+executable=Spotlite
 identifier=rocks.spotifast.Spotifast
 cp "$binary" "$app/Contents/MacOS/$executable"
 chmod 755 "$app/Contents/MacOS/$executable"

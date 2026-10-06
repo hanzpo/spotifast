@@ -59,7 +59,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                         .show(ui, |ui| {
                     ui.set_width(card_width - 72.0);
                     ui.spacing_mut().item_spacing.y = 8.0;
-                    theme::text(ui, "Spotifast", theme::bold(30.0), palette.text);
+                    theme::text(ui, "Spotlite", theme::bold(30.0), palette.text);
                     ui.add_space(22.0);
                     match &app.auth {
                         AuthStatus::WaitingForBrowser { url } => {
@@ -172,7 +172,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
             ui.painter().text(
                 pos2(rect.center().x, rect.bottom() - 24.0),
                 egui::Align2::CENTER_BOTTOM,
-                gettext(locale, "Spotifast {version} • not affiliated with Spotify")
+                gettext(locale, "Spotlite {version} • not affiliated with Spotify")
                     .replace("{version}", env!("CARGO_PKG_VERSION")),
                 theme::regular(11.5),
                 palette.dim,

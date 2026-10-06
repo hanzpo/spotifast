@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Spotifast from this checkout and install it into /Applications.
+# Build Spotlite from this checkout and install it into /Applications.
 #
 #   packaging/macos/install.sh
 #
@@ -13,7 +13,7 @@ cd "$root"
 
 app_dir="${APP_DIR:-/Applications}"
 version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
-bundle="target/Spotifast.app"
+bundle="target/Spotlite.app"
 
 cargo build --release --locked
 packaging/macos/bundle.sh target/release/spotifast "$bundle" "$version"
@@ -24,16 +24,19 @@ if [ -n "${ICON:-}" ]; then
     codesign --force --deep --sign "${CODESIGN_IDENTITY:--}" "$bundle"
 fi
 
-if pgrep -xq Spotifast; then
-    osascript -e 'quit app "Spotifast"'
-    for _ in $(seq 20); do
-        pgrep -xq Spotifast || break
-        sleep 0.5
-    done
-fi
+# Spotifast is the name the app had before; replace that copy too.
+for name in Spotlite Spotifast; do
+    if pgrep -xq "$name"; then
+        osascript -e "quit app \"$name\""
+        for _ in $(seq 20); do
+            pgrep -xq "$name" || break
+            sleep 0.5
+        done
+    fi
+done
 
-rm -rf "$app_dir/Spotifast.app"
+rm -rf "$app_dir/Spotlite.app" "$app_dir/Spotifast.app"
 cp -R "$bundle" "$app_dir/"
-codesign --verify "$app_dir/Spotifast.app"
-open "$app_dir/Spotifast.app"
-echo "Installed Spotifast $version in $app_dir"
+codesign --verify "$app_dir/Spotlite.app"
+open "$app_dir/Spotlite.app"
+echo "Installed Spotlite $version in $app_dir"

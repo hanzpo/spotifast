@@ -218,7 +218,7 @@ fn run_control(control: Control) -> i32 {
             }
         }
         Err(error) => {
-            eprintln!("Spotifast is not running or does not support remote control: {error}");
+            eprintln!("Spotlite is not running or does not support remote control: {error}");
             return 1;
         }
     };
@@ -249,7 +249,7 @@ fn desktop_entry() -> String {
 
 #[cfg(target_os = "linux")]
 const PULSEAUDIO_PROPERTIES: [(&str, &str); 2] = [
-    ("PULSE_PROP_application.name", "Spotifast"),
+    ("PULSE_PROP_application.name", "Spotlite"),
     ("PULSE_PROP_stream.description", "Spotify playback"),
 ];
 
@@ -378,7 +378,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         match single_instance::acquire(&waker, link.as_deref()) {
             single_instance::Outcome::Only(guard) => Some(guard),
             single_instance::Outcome::Surfaced => {
-                log::info!("Spotifast is already running; asked it to show its window");
+                log::info!("Spotlite is already running; asked it to show its window");
                 return Ok(());
             }
         }
@@ -424,6 +424,11 @@ pub(crate) fn run() -> eframe::Result<()> {
     let mut settings = settings::Settings::load(&dirs.settings_file());
     if let Some(name) = cli.device_name {
         settings.device_name = name;
+    }
+    // The app used to be called Spotifast; follow the rename unless the
+    // listener picked a device name of their own.
+    if settings.device_name == "Spotifast" {
+        settings.device_name = "Spotlite".to_string();
     }
     if settings.web_client_id.is_none() {
         settings.web_client_id = Some(spotifast::auth::BUILT_IN_PERSONAL_CLIENT_ID.to_string());
@@ -519,7 +524,7 @@ pub(crate) fn run() -> eframe::Result<()> {
             let options = profile_options(options);
             let persist_memory = options.persist_window;
             eframe::run_native(
-                "Spotifast",
+                "Spotlite",
                 options,
                 Box::new(move |cc| {
                     if let Some(gl) = &cc.gl {
@@ -649,7 +654,7 @@ fn native_options(fullscreen: bool, inner_size: Option<[f32; 2]>) -> eframe::Nat
         app_icon()
     };
     let viewport = egui::ViewportBuilder::default()
-        .with_title("Spotifast")
+        .with_title("Spotlite")
         .with_app_id(app_id)
         .with_taskbar(true)
         .with_icon(icon);
@@ -1005,7 +1010,9 @@ impl eframe::App for Shell {
                 MenuCommand::Back => Action::Back,
                 MenuCommand::Forward => Action::Forward,
                 MenuCommand::OpenRepo => {
-                    ctx.open_url(egui::OpenUrl::new_tab("https://github.com/crmne/spotifast"));
+                    ctx.open_url(egui::OpenUrl::new_tab(
+                        "https://github.com/hanzpo/spotifast",
+                    ));
                     continue;
                 }
                 // Editing goes through egui, which owns the text field

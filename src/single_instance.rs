@@ -178,7 +178,7 @@ fn reply(line: &str) -> std::io::Result<Reply> {
     } else {
         Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            "the running Spotifast answered something unexpected",
+            "the running Spotlite answered something unexpected",
         ))
     }
 }
@@ -213,12 +213,12 @@ fn claim(
         }
         fastframe_instance::Claim::Running(_) => Outcome::Surfaced,
         fastframe_instance::Claim::Declined => {
-            log::warn!("Spotifast is already running and declined this launch's request");
+            log::warn!("Spotlite is already running and declined this launch's request");
             Outcome::Surfaced
         }
         fastframe_instance::Claim::Unanswered => {
             log::warn!(
-                "Spotifast is already running but did not answer; not starting a second copy"
+                "Spotlite is already running but did not answer; not starting a second copy"
             );
             Outcome::Surfaced
         }

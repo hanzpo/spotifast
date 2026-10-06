@@ -280,7 +280,7 @@ impl std::fmt::Debug for Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            device_name: "Spotifast".to_string(),
+            device_name: "Spotlite".to_string(),
             bitrate: 320,
             normalisation: false,
             autoplay: true,

@@ -127,7 +127,7 @@ On macOS, build and install the app bundle from a checkout with:
 packaging/macos/install.sh
 ```
 
-It quits a running copy, replaces `/Applications/Spotifast.app`, and opens the
+It quits a running copy, replaces `/Applications/Spotlite.app`, and opens the
 new one. Set `ICON` to an `.icns` file to use a different app icon.
 
 On Linux, you need the development packages for ALSA, PulseAudio or PipeWire,
