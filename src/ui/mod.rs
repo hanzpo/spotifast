@@ -25,7 +25,6 @@ pub mod winamp;
 
 use egui::{Align2, Color32, Context, CornerRadius, Frame, Id, Margin, Rect, Stroke, vec2};
 
-use crate::api::models::pick_image;
 use crate::app::App;
 use crate::backend::AuthStatus;
 use crate::model::{Action, Loadable, Page, ToastKind};
@@ -209,74 +208,14 @@ where
     }
 }
 
-fn page_tint(app: &mut App) -> Option<Color32> {
-    let page = app.page().clone();
-    let image = match &page {
-        Page::Playlist(id) => app
-            .playlist_pages
-            .get(id)
-            .and_then(|page| page.playlist.get())
-            .or_else(|| app.known_playlist(id))
-            .and_then(|playlist| pick_image(&playlist.images, 64))
-            .map(str::to_string),
-        Page::Album(id) => app
-            .album_pages
-            .get(id)
-            .and_then(|page| page.album.get())
-            .or_else(|| app.known_album(id))
-            .and_then(|album| pick_image(&album.images, 64))
-            .map(str::to_string),
-        Page::Artist(id) => app
-            .artist_pages
-            .get(id)
-            .and_then(|page| page.artist.get())
-            .or_else(|| app.known_artist(id))
-            .and_then(|artist| pick_image(&artist.images, 64))
-            .map(str::to_string),
-        Page::Show(id) => app
-            .show_pages
-            .get(id)
-            .and_then(|page| page.show.get())
-            .or_else(|| app.known_show(id))
-            .and_then(|show| pick_image(&show.images, 64))
-            .map(str::to_string),
-        Page::Radio(seed) => pick_image(&app.radio_images(seed), 64).map(str::to_string),
-        Page::LikedSongs => return Some(Color32::from_rgb(0x50, 0x38, 0xc8)),
-        _ => None,
-    };
-    if !app.settings.accent_from_art && image.is_some() {
-        return None;
-    }
-    match image {
-        Some(url) => app.tint_for(Some(&url)).or_else(|| app.now_playing_tint()),
-        None => app.now_playing_tint(),
-    }
-}
-
 fn central(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let tint = page_tint(app);
     egui::CentralPanel::default()
         .frame(Frame::new().fill(palette.window))
         .show(ui, |ui| {
-            let rect = ui.max_rect();
-            if let Some(tint) = tint {
-                let strength = if matches!(
-                    app.page(),
-                    Page::Home | Page::Search | Page::Settings | Page::Queue
-                ) {
-                    0.45
-                } else {
-                    0.85
-                };
-                let top = blend(palette.window, tint, strength);
-                let header = Rect::from_min_size(rect.min, vec2(rect.width(), 340.0));
-                widgets::paint_vertical_gradient(ui, header, top, palette.window);
-            }
             ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
-            // egui fades a scrolled page's edge into the panel's plain
-            // colour, which shows as a pale band over a cover's tint; the
-            // page casts a shadow under the header instead.
+            // The page casts a shadow under the header instead of egui's
+            // fade into the panel colour.
             ui.spacing_mut().scroll.fade.strength = 0.0;
             topbar::show(app, ui);
             let page = app.page().clone();

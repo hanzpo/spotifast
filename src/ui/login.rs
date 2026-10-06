@@ -27,8 +27,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                 rect
             };
             super::titlebar_drag(ui, drag_rect);
-            let top = super::blend(palette.window, palette.accent, 0.10);
-            super::widgets::paint_vertical_gradient(ui, rect, top, palette.window);
             let card_width = 440.0;
             let proxy_id = egui::Id::new("login-proxy-open");
             let proxy_open = ui
@@ -53,12 +51,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                 .stroke(Stroke::new(1.0, palette.outline))
                 .corner_radius(CornerRadius::same(theme::RADIUS + 8))
                 .inner_margin(Margin::same(36))
-                .shadow(egui::epaint::Shadow {
-                    offset: [0, 16],
-                    blur: 48,
-                    spread: 0,
-                    color: palette.shadow,
-                })
                 .show(&mut card_ui, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("login-card-scroll")
