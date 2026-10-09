@@ -1096,6 +1096,59 @@ fn sort_by_text_key(visible: &mut [usize], ascending: bool, key: impl Fn(usize) 
     }
 }
 
+/// Orders rows by album name and keeps each album's songs together in disc
+/// and track order (#699). Albums that share a name stay in the order they
+/// first appear, and a descending sort reverses the albums, not the songs
+/// inside each one.
+fn sort_by_album(visible: &mut [usize], ascending: bool, items: &[TableItem]) {
+    let mut first_seen = std::collections::HashMap::new();
+    let mut keyed: Vec<_> = visible
+        .iter()
+        .enumerate()
+        .map(|(position, &index)| {
+            let (name, id, disc, number) = match &items[index].0 {
+                PlayableItem::Track(track) => {
+                    let (name, id) = track
+                        .album
+                        .as_ref()
+                        .map(|album| {
+                            let id = if album.id.is_empty() {
+                                album.uri.as_str()
+                            } else {
+                                album.id.as_str()
+                            };
+                            (album.name.to_lowercase(), id)
+                        })
+                        .unwrap_or_default();
+                    (
+                        name,
+                        id,
+                        track.disc_number.unwrap_or(0),
+                        track.track_number.unwrap_or(0),
+                    )
+                }
+                PlayableItem::Episode(_) => (String::new(), "", 0, 0),
+            };
+            let album = *first_seen.entry((name.clone(), id)).or_insert(position);
+            (name, album, disc, number, index)
+        })
+        .collect();
+    keyed.sort_by(|a, b| {
+        let names = if ascending {
+            a.0.cmp(&b.0)
+        } else {
+            b.0.cmp(&a.0)
+        };
+        names
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+            .then(a.3.cmp(&b.3))
+    });
+    for (slot, key) in visible.iter_mut().zip(keyed) {
+        *slot = key.4;
+    }
+}
+
 /// The indices of `items` as a view presents them: filtered by `needle`
 /// (already lowercased), then ordered by `sort`.
 fn view_indices(items: &[TableItem], needle: &str, sort: Option<TableSort>) -> Vec<usize> {
@@ -1131,18 +1184,7 @@ fn view_indices(items: &[TableItem], needle: &str, sort: Option<TableSort>) -> V
             SortColumn::Title => sort_by_text_key(&mut visible, sort.ascending, |index| {
                 items[index].0.name().to_lowercase()
             }),
-            SortColumn::Album => {
-                sort_by_text_key(&mut visible, sort.ascending, |index| {
-                    match &items[index].0 {
-                        PlayableItem::Track(track) => track
-                            .album
-                            .as_ref()
-                            .map(|album| album.name.to_lowercase())
-                            .unwrap_or_default(),
-                        PlayableItem::Episode(_) => String::new(),
-                    }
-                })
-            }
+            SortColumn::Album => sort_by_album(&mut visible, sort.ascending, items),
             SortColumn::AddedBy => sort_by_text_key(&mut visible, sort.ascending, |index| {
                 items[index].2.as_deref().unwrap_or_default().to_lowercase()
             }),
@@ -2593,6 +2635,92 @@ mod tests {
                 vec![3, 0, 1, 2],
                 "{column:?} descending must keep tied rows in playlist order"
             );
+        }
+    }
+
+    #[test]
+    fn album_sort_keeps_each_album_in_track_order() {
+        // Added in this order: Vida 3, Mutter 2, Vida 1, Mutter 1 (disc 2),
+        // Mutter 1, Vida 2. Sorting by album must not leave the songs of an
+        // album in the order they were added (#699).
+        let base = make_test_tracks();
+        let mut items: Vec<TableItem> = (0..6).map(|i| base[i % 4].clone()).collect();
+        for (item, (album, disc, number)) in items.iter_mut().zip([
+            ("Vida", 1, 3),
+            ("Mutter", 1, 2),
+            ("Vida", 1, 1),
+            ("Mutter", 2, 1),
+            ("Mutter", 1, 1),
+            ("Vida", 1, 2),
+        ]) {
+            let PlayableItem::Track(track) = &mut item.0 else {
+                panic!("test rows are tracks");
+            };
+            let entry = track.album.as_mut().unwrap();
+            entry.id = format!("alb_{album}");
+            entry.name = album.into();
+            track.disc_number = Some(disc);
+            track.track_number = Some(number);
+        }
+        let sorted = |ascending| {
+            view_indices(
+                &items,
+                "",
+                Some(TableSort {
+                    column: SortColumn::Album,
+                    ascending,
+                }),
+            )
+        };
+
+        assert_eq!(sorted(true), vec![4, 1, 3, 2, 5, 0]);
+        assert_eq!(
+            sorted(false),
+            vec![2, 5, 0, 4, 1, 3],
+            "descending reverses the albums, not the songs inside them"
+        );
+    }
+
+    #[test]
+    fn album_sort_keeps_same_named_albums_apart() {
+        // Two different albums called "Greatest Hits", interleaved. Rows
+        // that carry no album ID are told apart by the album's URI.
+        for without_ids in [false, true] {
+            let mut items = make_test_tracks();
+            for (item, (id, number)) in
+                items
+                    .iter_mut()
+                    .zip([("alb_b", 2), ("alb_a", 2), ("alb_b", 1), ("alb_a", 1)])
+            {
+                let PlayableItem::Track(track) = &mut item.0 else {
+                    panic!("test rows are tracks");
+                };
+                let entry = track.album.as_mut().unwrap();
+                entry.id = if without_ids {
+                    String::new()
+                } else {
+                    id.into()
+                };
+                entry.uri = format!("spotify:album:{id}");
+                entry.name = "Greatest Hits".into();
+                track.track_number = Some(number);
+            }
+
+            for ascending in [true, false] {
+                assert_eq!(
+                    view_indices(
+                        &items,
+                        "",
+                        Some(TableSort {
+                            column: SortColumn::Album,
+                            ascending,
+                        }),
+                    ),
+                    vec![2, 0, 3, 1],
+                    "the album added first comes first, ascending {ascending}, \
+                     without IDs {without_ids}"
+                );
+            }
         }
     }
 
