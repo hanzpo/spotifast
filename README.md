@@ -18,6 +18,7 @@ https://github.com/user-attachments/assets/a5f669ce-b3b7-4f8e-9933-976a78876c7e
 - [Getting started](https://spotifast.rocks/getting-started/): sign-in, playback on this computer, themes, fonts, proxies
 - [Everyday use](https://spotifast.rocks/using-spotifast/): keyboard shortcuts, command-line control
 - [Settings and files](https://spotifast.rocks/settings-and-files/) and [Privacy](https://spotifast.rocks/privacy/)
+- [Make it even faster](https://spotifast.rocks/make-it-even-faster/): scrolling performance and loading delays
 - [How it connects](https://spotifast.rocks/how-it-connects/) and [What Spotify allows](https://spotifast.rocks/what-spotify-allows/)
 - [Will my account get banned?](https://spotifast.rocks/what-is-spotifast/#will-my-spotify-account-get-banned)
 
