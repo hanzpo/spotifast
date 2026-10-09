@@ -259,7 +259,13 @@ pub fn actions_row(
                 } else {
                     palette.secondary
                 },
-                palette.text,
+                // Keep shuffle green under the pointer, or turning it on
+                // looks like nothing happened until the pointer leaves.
+                if shuffle {
+                    palette.accent_hover
+                } else {
+                    palette.text
+                },
                 &if shuffle {
                     gettext(locale, "Shuffle off")
                 } else {
@@ -3576,6 +3582,64 @@ mod tests {
             "shuffle must not start playback: {:?}",
             app.actions
         );
+    }
+
+    #[test]
+    fn hovered_collection_shuffle_button_stays_green_while_on() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut app = test_app();
+        app.apply(Action::SetShuffle(true), &ctx);
+        app.actions.clear();
+        let mut draw = |events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(800.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions_row(
+                        &mut app,
+                        ui,
+                        Actions {
+                            play_uri: Some("spotify:playlist:test".into()),
+                            view: None,
+                            saved: None,
+                            saved_icons: (Icon::CirclePlus, Icon::CircleCheck),
+                            saved_tooltips: Default::default(),
+                            owned_playlist: None,
+                            reload: None,
+                            name: "Test",
+                            save_radio: None,
+                        },
+                        None,
+                    );
+                },
+            );
+            output.textures_delta.clear();
+            output
+                .shapes
+                .into_iter()
+                .filter_map(|shape| match shape.shape {
+                    // Icons are textured rects tinted by their fill.
+                    egui::Shape::Rect(rect) if rect.brush.is_some() => Some(rect.fill),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        draw(vec![]);
+        let tints = draw(vec![egui::Event::PointerMoved(egui::pos2(87.0, 28.0))]);
+
+        assert!(
+            tints.contains(&app.palette.accent_hover),
+            "a hovered shuffle button must still show that shuffle is on: {tints:?}"
+        );
+        assert!(!tints.contains(&app.palette.text), "{tints:?}");
     }
 
     #[test]
