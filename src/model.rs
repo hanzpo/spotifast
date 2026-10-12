@@ -611,6 +611,10 @@ pub struct Library {
     pub playlists_refresh: Option<Vec<Playlist>>,
     /// The shown list is the last session's, still to be confirmed.
     pub playlists_from_cache: bool,
+    /// When the whole list was last read from Spotify, in Unix seconds:
+    /// within a day, a list the streaming session confirms is kept rather
+    /// than read again over the shared app's quota.
+    pub playlists_fetched_at: Option<i64>,
     pub liked: PagedList<SavedTrack>,
     pub albums: PagedList<SavedAlbum>,
     pub artists: CursorList<Artist>,
@@ -665,6 +669,12 @@ pub struct HomeData {
     pub top_songs_generation: u64,
     pub requested: bool,
     pub loaded_at: Option<Instant>,
+    /// When the shelves only the shared app serves (Made for You and the
+    /// recommendations) were last read, in Unix seconds. They change
+    /// slowly, and the shared app's quota is scarce.
+    pub shared_fetched_at: Option<i64>,
+    /// This Home load skips the shared app's shelves: they are fresh.
+    pub shared_fresh: bool,
 }
 
 pub const DISCOVER_TERMS: &[&str] = &["Discover Weekly", "Release Radar", "Daily Mix", "daylist"];

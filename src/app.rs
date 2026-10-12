@@ -96,6 +96,15 @@ struct TrackIntent {
 }
 
 /// What saving the edit dialog sends: only the details that changed.
+/// See [`App::playlists_check`].
+struct PlaylistsCheck {
+    started: Instant,
+    /// The account's playlists as the session lists them, once it has.
+    rootlist: Option<Vec<String>>,
+    /// The saved list has been read from disk, or found missing.
+    cache_settled: bool,
+}
+
 struct PlaylistDetailChanges {
     name: Option<String>,
     description: Option<String>,
@@ -274,6 +283,13 @@ pub struct App {
     /// The local API front ends such as the Swift app drive (src/server.rs).
     #[cfg(unix)]
     api: Option<crate::server::Server>,
+    /// A start-up check of the saved playlists against the account's
+    /// playlist list over the streaming session, before reading them all
+    /// again over the shared app's quota.
+    playlists_check: Option<PlaylistsCheck>,
+    /// Changes a playlist rename is waiting on Spotify to confirm, to apply
+    /// to the library's list once it does, instead of reading it again.
+    pending_playlist_details: HashMap<String, PlaylistDetailChanges>,
     /// What the API's clients were last told.
     #[cfg(unix)]
     api_pushed: api::Pushed,
@@ -756,6 +772,8 @@ impl App {
             control_now_playing: None,
             control_devices: None,
             serve_in_background: false,
+            playlists_check: None,
+            pending_playlist_details: HashMap::new(),
             #[cfg(unix)]
             api: None,
             #[cfg(unix)]
@@ -1911,6 +1929,20 @@ impl App {
                         });
                         self.rootlist = rootlist.entries;
                         self.editable_by_grant = rootlist.editable;
+                        if let Some(check) = &mut self.playlists_check {
+                            check.rootlist = Some(
+                                self.rootlist
+                                    .iter()
+                                    .filter_map(|entry| match entry {
+                                        crate::player::RootlistEntry::Playlist(uri) => {
+                                            Some(uri.clone())
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect(),
+                            );
+                            self.settle_playlists_check();
+                        }
                         if let Some(account_id) = account_id {
                             self.rootlist_cache = Some(CachedRootlist {
                                 account_id,
@@ -1919,7 +1951,12 @@ impl App {
                             self.session_dirty = true;
                         }
                     }
-                    Err(error) => log::warn!("rootlist unavailable: {error}"),
+                    Err(error) => {
+                        log::warn!("rootlist unavailable: {error}");
+                        if self.playlists_check.take().is_some() {
+                            self.load_playlists();
+                        }
+                    }
                 },
                 Event::Lyrics { uri, result } => {
                     if self.lyrics_uri.as_deref() == Some(uri.as_str()) {
@@ -1965,6 +2002,10 @@ impl App {
                     {
                         cache.restore(&mut self.home, &mut self.library);
                     }
+                    if let Some(check) = &mut self.playlists_check {
+                        check.cache_settled = true;
+                        self.settle_playlists_check();
+                    }
                 }
                 Event::UserName { id, name } => {
                     self.set_user_name(id, name);
@@ -1995,7 +2036,14 @@ impl App {
             AuthStatus::Connected { .. } => {
                 self.sign_in_url = None;
                 self.reset_data();
-                self.load_playlists();
+                // The saved list may need no reading again: the session's
+                // playlist list, which has no quota, says first.
+                self.playlists_check = Some(PlaylistsCheck {
+                    started: Instant::now(),
+                    rootlist: None,
+                    cache_settled: false,
+                });
+                self.backend.send(Command::Rootlist);
                 self.ensure_loaded(self.page().clone());
                 self.poll_remote(true);
             }
@@ -2667,6 +2715,16 @@ impl App {
     fn tick(&mut self, ctx: &egui::Context) {
         self.poll_custom_themes(ctx);
         let now = Instant::now();
+        // A session that never lists the playlists leaves them to the Web
+        // API after a moment.
+        if self
+            .playlists_check
+            .as_ref()
+            .is_some_and(|check| check.started.elapsed() > Duration::from_secs(15))
+        {
+            self.playlists_check = None;
+            self.load_playlists();
+        }
         if !self.zoom_applied {
             self.zoom_applied = true;
             let zoom = self.settings.zoom.clamp(0.5, 2.5);
@@ -3337,6 +3395,42 @@ impl App {
 
     // ---- loading ---------------------------------------------------------------
 
+    /// Keeps the saved playlists when the session's playlist list has the
+    /// same playlists and the saved list is less than a day old; otherwise
+    /// reads them again. Waits for both the list and the saved copy.
+    fn settle_playlists_check(&mut self) {
+        let Some(check) = &self.playlists_check else {
+            return;
+        };
+        let (Some(rootlist), true) = (&check.rootlist, check.cache_settled) else {
+            return;
+        };
+        let fresh = self
+            .library
+            .playlists_fetched_at
+            .is_some_and(|at| jiff::Timestamp::now().as_second() - at < 24 * 60 * 60);
+        let same = self.library.playlists.get().is_some_and(|list| {
+            let known: HashSet<&str> = list.iter().map(|playlist| playlist.uri.as_str()).collect();
+            rootlist.len() == known.len() && rootlist.iter().all(|uri| known.contains(uri.as_str()))
+        });
+        self.playlists_check = None;
+        if fresh && same && self.library.playlists_from_cache {
+            log::info!("the saved playlists match the account's; not reading them again");
+            self.library.playlists_from_cache = false;
+            let uris: Vec<String> = self
+                .library
+                .playlists
+                .get()
+                .map(|list| list.iter().map(|playlist| playlist.uri.clone()).collect())
+                .unwrap_or_default();
+            for uri in uris {
+                self.saved.insert(uri, true);
+            }
+        } else {
+            self.load_playlists();
+        }
+    }
+
     fn load_playlists(&mut self) {
         if self.library.playlists.is_loading() || self.library.playlists_refresh.is_some() {
             return;
@@ -3509,6 +3603,14 @@ impl App {
         self.home.loaded_at = Some(Instant::now());
         self.home.generation += 1;
         let generation = self.home.generation;
+        // Made for You and the recommendations come only from the shared
+        // app; within twelve hours the saved ones stand.
+        self.home.shared_fresh = !force
+            && !self.home.discover.is_empty()
+            && self
+                .home
+                .shared_fetched_at
+                .is_some_and(|at| jiff::Timestamp::now().as_second() - at < 12 * 60 * 60);
         if self.home.recently_played.get().is_none() {
             self.home.recently_played = Loadable::Loading;
         }
@@ -3531,7 +3633,7 @@ impl App {
             generation,
         });
         self.home.discover_pending.clear();
-        for term in DISCOVER_TERMS {
+        for term in DISCOVER_TERMS.iter().filter(|_| !self.home.shared_fresh) {
             self.home
                 .discover_pending
                 .insert((*term).to_string(), Loadable::Loading);
@@ -4855,7 +4957,8 @@ impl App {
                         .filter_map(|track| track.id.clone())
                         .take(5)
                         .collect();
-                    if !seeds.is_empty() {
+                    let fresh = self.home.shared_fresh && self.home.recommendations.get().is_some();
+                    if !seeds.is_empty() && !fresh {
                         if self.home.recommendations.get().is_none() {
                             self.home.recommendations = Loadable::Loading;
                         }
@@ -4893,6 +4996,9 @@ impl App {
                     self.request_contains(uris);
                 }
                 self.home_cache_dirty |= result.is_ok();
+                if result.is_ok() {
+                    self.home.shared_fetched_at = Some(jiff::Timestamp::now().as_second());
+                }
                 self.home.recommendations.refresh(result);
             }
             ApiResponse::Discover {
@@ -4929,6 +5035,7 @@ impl App {
                 if complete {
                     self.home.discover = std::mem::take(&mut self.home.discover_pending);
                     self.home_cache_dirty = true;
+                    self.home.shared_fetched_at = Some(jiff::Timestamp::now().as_second());
                 }
             }
             // A reload reads the playlists from the top again under a new
@@ -4960,6 +5067,10 @@ impl App {
                         }
                     }
                     self.home_cache_dirty |= next_offset.is_none();
+                    if next_offset.is_none() {
+                        self.library.playlists_fetched_at =
+                            Some(jiff::Timestamp::now().as_second());
+                    }
                     self.library.playlists_next = next_offset;
                     if next_offset.is_some() {
                         self.load_more(Page::Home);
@@ -5338,7 +5449,27 @@ impl App {
                     Ok(()) => {
                         self.toast(gettext(self.locale, "Playlist updated"));
                         self.playlist_pages.remove(&id);
-                        self.load_playlists();
+                        // The list takes the change it knows of, rather than
+                        // read every page again over the shared app's quota.
+                        if let Some(changes) = self.pending_playlist_details.remove(&id)
+                            && let Some(playlist) =
+                                self.library.playlists.get_mut().and_then(|list| {
+                                    list.iter_mut().find(|playlist| playlist.id == id)
+                                })
+                        {
+                            if let Some(name) = changes.name {
+                                playlist.name = name;
+                            }
+                            if let Some(description) = changes.description {
+                                playlist.description = Some(description);
+                            }
+                            if let Some(public) = changes.public {
+                                playlist.public = Some(public);
+                            }
+                            self.home_cache_dirty = true;
+                        } else {
+                            self.load_playlists();
+                        }
                         if matches!(self.page(), Page::Playlist(current) if *current == id) {
                             self.ensure_loaded(Page::Playlist(id));
                         }
@@ -5446,7 +5577,33 @@ impl App {
                     } else {
                         gettext(self.locale, "Removed from Your Library")
                     });
-                    self.load_playlists();
+                    // The list follows the change itself where it knows the
+                    // playlist, rather than read every page again over the
+                    // shared app's quota.
+                    let known = followed
+                        .then(|| {
+                            self.playlist_pages
+                                .get(&id)
+                                .and_then(|page| page.playlist.get())
+                                .cloned()
+                        })
+                        .flatten();
+                    match (followed, known, self.library.playlists.get_mut()) {
+                        (false, _, Some(list)) => {
+                            list.retain(|playlist| playlist.id != id);
+                            let uri = format!("spotify:playlist:{id}");
+                            self.rootlist.retain(|entry| {
+                                !matches!(entry, crate::player::RootlistEntry::Playlist(listed) if *listed == uri)
+                            });
+                            self.home_cache_dirty = true;
+                        }
+                        (true, Some(playlist), Some(list)) => {
+                            list.retain(|listed| listed.id != id);
+                            list.insert(0, playlist);
+                            self.home_cache_dirty = true;
+                        }
+                        _ => self.load_playlists(),
+                    }
                     if !followed && matches!(self.page(), Page::Playlist(current) if *current == id)
                     {
                         self.open(Page::Home);
@@ -8552,11 +8709,12 @@ impl App {
                 {
                     self.playlist_busy = true;
                     self.backend.api(ApiRequest::UpdatePlaylist {
-                        id,
-                        name: changes.name,
-                        description: changes.description,
+                        id: id.clone(),
+                        name: changes.name.clone(),
+                        description: changes.description.clone(),
                         public: changes.public,
                     });
+                    self.pending_playlist_details.insert(id, changes);
                 }
             }
             Action::DeletePlaylist(id) => {
@@ -10968,6 +11126,103 @@ mod tests {
 
     fn playlist_ids(ids: &[&str]) -> Option<Vec<String>> {
         Some(ids.iter().map(|id| (*id).to_string()).collect())
+    }
+
+    fn signed_in_with_saved_playlists(saved: &[&str], fetched_hours_ago: i64) -> App {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        app.handle_auth(AuthStatus::Connected {
+            username: "me".into(),
+        });
+        app.user = Some(User {
+            id: "me".into(),
+            ..User::default()
+        });
+        let mut library = Library::default();
+        library.playlists = Loadable::Loaded(playlist_page(saved, 0, saved.len() as u32).items);
+        library.playlists_fetched_at =
+            Some(jiff::Timestamp::now().as_second() - fetched_hours_ago * 60 * 60);
+        app.handle_backend_events(vec![Event::HomeCache {
+            account_id: "me".into(),
+            cache: Some(crate::home_cache::Cache::capture(
+                "me".into(),
+                &HomeData::default(),
+                &library,
+            )),
+        }]);
+        app
+    }
+
+    fn session_lists(app: &mut App, ids: &[&str]) {
+        app.handle_backend_events(vec![Event::Rootlist {
+            result: Ok(crate::player::Rootlist {
+                entries: ids
+                    .iter()
+                    .map(|id| {
+                        crate::player::RootlistEntry::Playlist(format!("spotify:playlist:{id}"))
+                    })
+                    .collect(),
+                editable: Default::default(),
+            }),
+        }]);
+    }
+
+    /// The saved playlists stand when the session, which has no quota,
+    /// lists the same ones and they are less than a day old: reading every
+    /// page again went over the shared app's rate limit at each start.
+    #[test]
+    fn saved_playlists_the_session_confirms_are_not_read_again() {
+        let mut app = signed_in_with_saved_playlists(&["a", "b"], 2);
+        let generation = app.library.playlists_generation;
+        session_lists(&mut app, &["b", "a"]);
+        assert!(app.playlists_check.is_none());
+        assert_eq!(
+            app.library.playlists_generation, generation,
+            "nothing read again"
+        );
+        assert_eq!(listed_playlists(&app), playlist_ids(&["a", "b"]));
+        assert_eq!(app.is_saved("spotify:playlist:a"), Some(true));
+    }
+
+    /// A playlist made or followed elsewhere, or a day gone by, reads them
+    /// all again.
+    #[test]
+    fn saved_playlists_are_read_again_when_they_differ_or_are_old() {
+        let mut changed = signed_in_with_saved_playlists(&["a", "b"], 2);
+        let generation = changed.library.playlists_generation;
+        session_lists(&mut changed, &["a", "b", "c"]);
+        assert_ne!(changed.library.playlists_generation, generation);
+
+        let mut old = signed_in_with_saved_playlists(&["a", "b"], 30);
+        let generation = old.library.playlists_generation;
+        session_lists(&mut old, &["a", "b"]);
+        assert_ne!(old.library.playlists_generation, generation);
+    }
+
+    /// A renamed playlist takes its new name in the list without every page
+    /// being read again.
+    #[test]
+    fn a_rename_changes_the_list_without_reading_it_again() {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        app.library.playlists = Loadable::Loaded(playlist_page(&["a"], 0, 1).items);
+        let generation = app.library.playlists_generation;
+        let ctx = egui::Context::default();
+        app.apply(
+            Action::UpdatePlaylist {
+                id: "a".into(),
+                name: "Renamed".into(),
+                description: String::new(),
+                public: None,
+            },
+            &ctx,
+        );
+        app.handle_api(ApiResponse::PlaylistUpdated {
+            id: "a".into(),
+            result: Ok(()),
+        });
+        assert_eq!(app.library.playlists.get().unwrap()[0].name, "Renamed");
+        assert_eq!(app.library.playlists_generation, generation);
     }
 
     /// A later page of the library's playlists that fails, as when Spotify

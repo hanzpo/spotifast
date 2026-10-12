@@ -34,6 +34,13 @@ pub struct Cache {
     /// The sidebar's playlists, whole.
     #[serde(default)]
     playlists: Option<Vec<Playlist>>,
+    /// When the playlists were read from Spotify, in Unix seconds.
+    #[serde(default)]
+    playlists_fetched_at: Option<i64>,
+    /// When Made for You and the recommendations were read, in Unix
+    /// seconds.
+    #[serde(default)]
+    shared_fetched_at: Option<i64>,
 }
 
 impl Cache {
@@ -65,6 +72,8 @@ impl Cache {
                 .collect(),
             shows: library.shows.leading(LIBRARY_ROWS),
             playlists: library.complete_playlists().cloned(),
+            playlists_fetched_at: library.playlists_fetched_at,
+            shared_fetched_at: home.shared_fetched_at,
         }
     }
 
@@ -80,6 +89,12 @@ impl Cache {
         library.shows.show_cached(self.shows);
         if let Some(playlists) = self.playlists {
             library.show_cached_playlists(playlists);
+            if library.playlists_from_cache {
+                library.playlists_fetched_at = self.playlists_fetched_at;
+            }
+        }
+        if home.shared_fetched_at.is_none() {
+            home.shared_fetched_at = self.shared_fetched_at;
         }
         fill(&mut home.recently_played, self.recently_played);
         fill(&mut home.top_artists, self.top_artists);
