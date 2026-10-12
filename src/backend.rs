@@ -3485,6 +3485,33 @@ async fn handle(
         observe_playlists(api, &response);
         return (response, None);
     }
+    // An artist's top songs come over the session where it can: the Web
+    // API serves them only from the shared app, whose rate limit can hold
+    // them back for minutes.
+    if let ApiRequest::ArtistTopTracks { id } = &request
+        && let Some(engine) = engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    {
+        match tokio::time::timeout(
+            SESSION_READ_TIMEOUT,
+            session_reads::artist_top_tracks(engine.session(), id),
+        )
+        .await
+        {
+            Ok(Ok(tracks)) => {
+                log::debug!("Spotify route operation={operation:?} source=session");
+                return (
+                    ApiResponse::ArtistTopTracks {
+                        id: id.clone(),
+                        result: Ok(tracks),
+                    },
+                    None,
+                );
+            }
+            Ok(Err(error)) => log::debug!("session top tracks for {id} failed: {error:#}"),
+            Err(_) => log::debug!("session top tracks for {id} timed out"),
+        }
+    }
     let selected = api.client_for(operation).await;
     let expired = std::cell::Cell::new(None);
     macro_rules! routed {

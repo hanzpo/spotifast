@@ -179,6 +179,31 @@ pub async fn station(session: &Session, station: &str) -> anyhow::Result<Vec<Tra
         .collect())
 }
 
+/// An artist's most played songs where this account is, over the session:
+/// the Web API's top tracks are the shared app's alone, which a Spotify
+/// rate limit can hold back for minutes at a time.
+pub async fn artist_top_tracks(session: &Session, id: &str) -> anyhow::Result<Vec<Track>> {
+    use librespot_metadata::Metadata as _;
+    let uri = SpotifyUri::from_uri(&format!("spotify:artist:{id}"))?;
+    let artist = SessionArtist::get(session, &uri).await?;
+    let uris = artist.top_tracks.for_country(&session.country());
+    anyhow::ensure!(!uris.is_empty(), "Spotify has no top songs for this artist here");
+    let found = metadata(session, uris.iter())
+        .await
+        .map_err(|failure| match failure {
+            Failure::Definitive(error) => anyhow::anyhow!("{error}"),
+            Failure::Retry(error) => error,
+        })?;
+    Ok(uris
+        .iter()
+        .filter_map(|uri| uri.to_uri().ok())
+        .filter_map(|uri| match found.get(&uri) {
+            Some(PlayableItem::Track(track)) => Some(track.clone()),
+            _ => None,
+        })
+        .collect())
+}
+
 /// Each song of a resolved station once, named by URI or by raw id.
 fn station_songs(context: &librespot_protocol::context::Context) -> Vec<SpotifyUri> {
     let mut seen = BTreeSet::new();
