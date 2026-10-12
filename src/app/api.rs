@@ -746,7 +746,11 @@ impl App {
                     "loading": albums.loading || (!albums.loaded_once && albums.items.is_empty()),
                     "error": albums.error,
                     "more": albums.can_load_more(),
-                    "cards": albums.items.iter().map(|saved| album_card(&saved.album)).collect::<Vec<_>>(),
+                    "cards": albums.items.iter().map(|saved| {
+                        let mut card = album_card(&saved.album);
+                        card["added_at"] = json!(saved.added_at);
+                        card
+                    }).collect::<Vec<_>>(),
                 }))
             }
             "library.artists" => {
@@ -797,6 +801,29 @@ impl App {
                         row
                     }).collect::<Vec<_>>(),
                 }))
+            }
+            // What was played lately, newest first: this Mac's plays and
+            // Spotify's history together.
+            "library.recent" => {
+                if self.recents.items.is_empty() && !self.recents.loading && !self.recents.complete
+                {
+                    self.load_recents(false);
+                }
+                Ok(json!({
+                    "loading": self.recents.loading && self.recents_view.is_empty(),
+                    "error": self.recents.error,
+                    "more": self.recents.can_load_more(),
+                    "tracks": self.recents_view.iter().map(|played| {
+                        let mut row = track(&played.track);
+                        row["played_at"] = json!(played.played_at);
+                        row["context"] = json!(played.context.as_ref().map(|context| context.uri.clone()));
+                        row
+                    }).collect::<Vec<_>>(),
+                }))
+            }
+            "library.recent_more" => {
+                self.actions.push(Action::LoadMoreRecents);
+                ok()
             }
             "search.history" => Ok(json!({ "queries": self.settings.search_history })),
             "search.forget" => {
@@ -997,6 +1024,40 @@ impl App {
             "playlist.delete" => {
                 self.actions
                     .push(Action::DeletePlaylist(param_str(params, "id")?.to_string()));
+                ok()
+            }
+            // A new cover for a playlist, from an image file on this Mac.
+            "playlist.cover" => {
+                let id = param_str(params, "id")?.to_string();
+                let path = std::path::PathBuf::from(param_str(params, "path")?);
+                let size = std::fs::metadata(&path)
+                    .map_err(|error| format!("Couldn't read the image: {error}"))?
+                    .len();
+                if size > 20 * 1024 * 1024 {
+                    return Err("The image is too large.".into());
+                }
+                let bytes = std::fs::read(&path)
+                    .map_err(|error| format!("Couldn't read the image: {error}"))?;
+                let cover = crate::playlist_cover::prepare(&bytes)?;
+                let playlist = self
+                    .library
+                    .playlists
+                    .get()
+                    .and_then(|list| list.iter().find(|playlist| playlist.id == id))
+                    .cloned()
+                    .unwrap_or_default();
+                // The upload runs as the window's edit sheet runs it.
+                self.dialog = Some(crate::model::Dialog::EditPlaylist {
+                    cover: crate::playlist_cover::Draft {
+                        selection: Some(cover),
+                        ..Default::default()
+                    },
+                    id: id.clone(),
+                    name: playlist.name,
+                    description: playlist.description.unwrap_or_default(),
+                    public: playlist.public,
+                });
+                self.actions.push(Action::UploadPlaylistCover(id));
                 ok()
             }
             "radio.save" => {
