@@ -114,12 +114,18 @@ struct Shell: View {
         }
         .animation(.easeInOut(duration: 0.25), value: model.showNowPlaying)
         .toolbar(model.showNowPlaying ? .hidden : .automatic, for: .windowToolbar)
-        // Music's field at the toolbar's end: Search on the Search page,
-        // and elsewhere Find, which filters the page on show.
+        // Music's field at the toolbar's end: Find on the library's pages,
+        // which filters what they show, and Search everywhere else.
         .searchable(
-            text: model.route == .search ? $model.searchText : $model.findText,
+            text: model.route.findable ? $model.findText : $model.searchText,
             placement: .toolbar,
-            prompt: model.route == .search ? "Search" : "Find in \(title)")
+            prompt: model.route.findable ? "Find in \(title)" : "Search")
+        // Typing a search anywhere but Search goes there, with the words.
+        .onChange(of: model.searchText) { _, text in
+            if !text.trimmingCharacters(in: .whitespaces).isEmpty, model.route != .search {
+                model.root = .search
+            }
+        }
         .searchFocused($searchFocused)
         .onChange(of: model.searchFocused) { _, wanted in
             guard wanted else { return }

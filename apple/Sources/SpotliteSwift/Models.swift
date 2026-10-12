@@ -451,6 +451,19 @@ enum Route: Hashable, Sendable {
         }
     }
 
+    /// A page Music's Find filters: the library's lists, and lists of songs
+    /// or cards. Elsewhere the field searches Spotify, as Music's does on
+    /// Home.
+    var findable: Bool {
+        switch self {
+        case .recentlyAdded, .allPlaylists, .liked, .albums, .artists, .podcasts, .episodes,
+             .topSongs, .playlist, .album, .radio, .discography:
+            true
+        case .home, .search, .artist, .show, .user:
+            false
+        }
+    }
+
     /// A page of songs the toolbar's sort menu sorts.
     var sortable: Bool {
         switch self {
