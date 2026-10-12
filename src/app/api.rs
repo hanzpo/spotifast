@@ -689,7 +689,11 @@ impl App {
 
             // ---- the library -----------------------------------------------
             "library.playlists" => {
-                if matches!(self.library.playlists, Loadable::NotLoaded) && self.is_connected() {
+                // Asking again retries a load that failed, such as one
+                // Spotify rate limited.
+                if matches!(self.library.playlists, Loadable::NotLoaded | Loadable::Failed(_))
+                    && self.is_connected()
+                {
                     self.load_playlists();
                 }
                 Ok(self.api_playlists())
