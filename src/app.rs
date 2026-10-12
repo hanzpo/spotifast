@@ -271,9 +271,9 @@ pub struct App {
     /// The local API front ends such as the Swift app drive (src/server.rs).
     #[cfg(unix)]
     api: Option<crate::server::Server>,
-    /// The player as last told to the API's clients, and when.
+    /// What the API's clients were last told.
     #[cfg(unix)]
-    api_player_sent: Option<(serde_json::Value, Instant)>,
+    api_pushed: api::Pushed,
     /// Whether that device slot still matches [`Self::devices`]. The
     /// now-playing snapshot is rebuilt every frame because its position
     /// moves every frame; a device list changes when Spotify answers, which
@@ -750,7 +750,7 @@ impl App {
             #[cfg(unix)]
             api: None,
             #[cfg(unix)]
-            api_player_sent: None,
+            api_pushed: Default::default(),
             control_devices_stale: true,
             offline: false,
             palette,
