@@ -485,6 +485,17 @@ impl App {
                             index: index.unwrap_or(0),
                         }
                     }
+                    // A sorted or filtered list plays in the order shown,
+                    // still under its context's name.
+                    (Some(context), Some(uri)) if !uris.is_empty() => Action::PlayFromRow {
+                        context: RowContext::View {
+                            uris: uris.clone().into(),
+                            context_uri: context.to_string(),
+                            editable_playlist: None,
+                        },
+                        uri: uri.to_string(),
+                        index: index.unwrap_or(0),
+                    },
                     (Some(context), _) => Action::PlayContext {
                         uri: context.to_string(),
                         offset_uri: uri.map(str::to_string),
@@ -677,6 +688,33 @@ impl App {
             }
             // Saves a song, album, show, or artist (a follow), or follows a
             // playlist; or takes it back out.
+            "library.episodes" => {
+                self.touch_page(&Page::Episodes);
+                self.ensure_loaded(Page::Episodes);
+                let episodes = &self.library.episodes;
+                Ok(json!({
+                    "loading": episodes.loading || (!episodes.loaded_once && episodes.items.is_empty()),
+                    "error": episodes.error,
+                    "page": "episodes",
+                    "kind": "Episodes",
+                    "title": "Your Episodes",
+                    "facts": [format!("{} episodes", episodes.total.unwrap_or(episodes.items.len() as u32))],
+                    "more": episodes.can_load_more(),
+                    "show_album": false,
+                    "tracks": episodes.items.iter().map(|saved| {
+                        let mut row = episode(&saved.episode, None);
+                        row["added_at"] = json!(saved.added_at);
+                        row
+                    }).collect::<Vec<_>>(),
+                }))
+            }
+            "search.history" => Ok(json!({ "queries": self.settings.search_history })),
+            "search.forget" => {
+                self.actions.push(Action::ForgetSearch(
+                    param_str(params, "query")?.to_string(),
+                ));
+                ok()
+            }
             "library.toggle" => {
                 self.actions
                     .push(Action::ToggleSaved(param_str(params, "uri")?.to_string()));
