@@ -413,3 +413,55 @@ struct NowPlayingView: View {
         .task(id: player.uri) { await model.loadLyrics() }
     }
 }
+
+// MARK: Mini Player
+
+/// Music's Mini Player: the cover filling a small window, its controls on
+/// the cover while the pointer is over it, and the song beneath.
+struct MiniPlayer: View {
+    @Environment(AppModel.self) private var model
+    @State private var hovered = false
+
+    var body: some View {
+        let player = model.player
+        VStack(spacing: 0) {
+            ZStack {
+                Artwork(url: player.cover ?? player.image, size: 300, radius: 0)
+                if hovered {
+                    LinearGradient(colors: [.black.opacity(0.0), .black.opacity(0.55)],
+                                   startPoint: .top, endPoint: .bottom)
+                    HStack(spacing: 30) {
+                        Button(action: model.previous) { Image(systemName: "backward.fill").font(.title2) }
+                        Button(action: model.toggle) {
+                            Image(systemName: player.playing == true ? "pause.fill" : "play.fill").font(.largeTitle)
+                        }
+                        Button(action: model.next) { Image(systemName: "forward.fill").font(.title2) }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .padding(.top, 180)
+                }
+            }
+            .frame(width: 300, height: 300)
+            .clipped()
+            .onHover { hovered = $0 }
+            VStack(spacing: 6) {
+                Text(player.title ?? "Nothing playing")
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                Text(player.subtitle ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                    let duration = max(player.durationMs ?? 0, 1)
+                    SeekLine(fraction: Double(model.position(at: context.date)) / Double(duration))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .frame(width: 300)
+        .background(.regularMaterial)
+    }
+}

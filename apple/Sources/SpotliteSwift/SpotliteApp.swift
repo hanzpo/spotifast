@@ -9,12 +9,12 @@ struct SpotliteApp: App {
     /// active, and the window out of sight, so it disturbs nobody.
     static let probing = ProcessInfo.processInfo.environment["SPOTLITE_PROBE"] != nil
 
-    @NSApplicationDelegateAdaptor private var delegate: ProbeDelegate
+    @NSApplicationDelegateAdaptor private var delegate: AppDelegate
 
     init() {
+        AppDelegate.model = model
         if Self.probing {
             NSApplication.shared.setActivationPolicy(.accessory)
-            ProbeDelegate.model = model
         } else {
             // Run from a terminal by `swift run`, the process still gets a
             // Dock icon and a window of its own.
@@ -81,6 +81,23 @@ struct SpotliteApp: App {
                 Button("Repeat: \(repeatLabel)") { model.cycleRepeat() }
                     .keyboardShortcut("r")
                 Divider()
+                Menu("Sleep Timer") {
+                    Button(model.sleepAt == nil && model.sleepAfterSong == nil ? "✓ Off" : "Off") {
+                        model.setSleepTimer(minutes: nil)
+                    }
+                    ForEach([15, 30, 45, 60, 90], id: \.self) { minutes in
+                        Button("\(minutes) Minutes") { model.setSleepTimer(minutes: minutes) }
+                    }
+                    Button(model.sleepAfterSong != nil ? "✓ End of Song" : "End of Song") {
+                        model.sleepAtEndOfSong()
+                    }
+                    .disabled(!model.player.hasSong)
+                    if let at = model.sleepAt {
+                        Divider()
+                        Text("Pauses at \(at.formatted(date: .omitted, time: .shortened))")
+                    }
+                }
+                Divider()
                 Button("Go to Current Song") {
                     if let album = model.player.album?.id {
                         model.open(.album(album))
@@ -96,6 +113,15 @@ struct SpotliteApp: App {
             }
         }
 
+        Window("Mini Player", id: "mini-player") {
+            MiniPlayer()
+                .environment(model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .commands { MiniPlayerCommands() }
+
         Settings {
             SettingsView()
                 .environment(model)
@@ -107,6 +133,27 @@ struct SpotliteApp: App {
         case "context": "All"
         case "track": "One"
         default: "Off"
+        }
+    }
+}
+
+/// Window ▸ Switch to Mini Player, as Music has it.
+struct MiniPlayerCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some Commands {
+        CommandGroup(before: .windowList) {
+            Button("Switch to Mini Player") {
+                openWindow(id: "mini-player")
+                dismissWindow(id: "main")
+            }
+            .keyboardShortcut("m", modifiers: [.command, .option])
+            Button("Switch to Main Window") {
+                openWindow(id: "main")
+                dismissWindow(id: "mini-player")
+            }
+            Divider()
         }
     }
 }

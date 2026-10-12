@@ -10,9 +10,40 @@ private final class OffscreenWindow: NSWindow {
 /// checking it without disturbing whoever is at the Mac: the window sits
 /// beneath the desktop and the app never becomes active.
 @MainActor
-final class ProbeDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     static var model: AppModel?
     private var window: NSWindow?
+
+    /// The Dock menu, as Music's: the song, and the transport.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        guard let model = Self.model else { return nil }
+        let menu = NSMenu()
+        if let title = model.player.title {
+            let song = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            song.isEnabled = false
+            menu.addItem(song)
+            if let subtitle = model.player.subtitle, !subtitle.isEmpty {
+                let artist = NSMenuItem(title: subtitle, action: nil, keyEquivalent: "")
+                artist.isEnabled = false
+                menu.addItem(artist)
+            }
+            menu.addItem(.separator())
+        }
+        for (title, selector) in [
+            (model.player.playing == true ? "Pause" : "Play", #selector(togglePlay)),
+            ("Next", #selector(next)),
+            ("Previous", #selector(previous)),
+        ] {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func togglePlay() { Self.model?.toggle() }
+    @objc private func next() { Self.model?.next() }
+    @objc private func previous() { Self.model?.previous() }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard SpotliteApp.probing, let model = Self.model else { return }
@@ -27,8 +58,12 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         window.title = "Spotlite"
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
-        // SPOTLITE_PROBE_VIEW=settings draws the Settings window instead.
-        if ProcessInfo.processInfo.environment["SPOTLITE_PROBE_VIEW"] == "settings" {
+        // SPOTLITE_PROBE_VIEW draws the Settings window or the Mini Player.
+        if ProcessInfo.processInfo.environment["SPOTLITE_PROBE_VIEW"] == "mini" {
+            window.contentView = NSHostingView(rootView: MiniPlayer()
+                .environment(model)
+                .task { await model.connect() })
+        } else if ProcessInfo.processInfo.environment["SPOTLITE_PROBE_VIEW"] == "settings" {
             window.contentView = NSHostingView(rootView: SettingsView()
                 .environment(model)
                 .task { await model.connect() })

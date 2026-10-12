@@ -81,6 +81,42 @@ final class AppModel {
     /// The full-window player, as Music's Full Screen Player.
     var showNowPlaying = false
 
+    // MARK: Sleep timer
+
+    /// When playback pauses on its own, if a sleep timer is set.
+    var sleepAt: Date?
+    /// Pause at the end of the song playing when the timer was set.
+    var sleepAfterSong: String?
+    private var sleepTask: Task<Void, Never>?
+
+    func setSleepTimer(minutes: Int?) {
+        sleepTask?.cancel()
+        sleepAfterSong = nil
+        sleepAt = minutes.map { Date().addingTimeInterval(TimeInterval($0 * 60)) }
+        guard let at = sleepAt else { return }
+        sleepTask = Task {
+            try? await Task.sleep(for: .seconds(at.timeIntervalSinceNow))
+            guard !Task.isCancelled else { return }
+            sleepAt = nil
+            if player.playing == true { toggle() }
+        }
+        show("Sleep timer set")
+    }
+
+    func sleepAtEndOfSong() {
+        sleepTask?.cancel()
+        sleepAt = nil
+        sleepAfterSong = player.uri
+        show("Pausing after this song")
+    }
+
+    /// Pauses as soon as the song the timer was set on gives way to another.
+    private func checkSleepAfterSong(_ state: PlayerState) {
+        guard let song = sleepAfterSong, state.uri != song else { return }
+        sleepAfterSong = nil
+        if state.playing == true { toggle() }
+    }
+
     // MARK: Messages
 
     var toast: String?
@@ -177,6 +213,7 @@ final class AppModel {
     }
 
     private func setPlayer(_ state: PlayerState) {
+        checkSleepAfterSong(state)
         // A drag on the volume keeps the slider where the hand put it.
         var state = state
         if let volume = volumeDragging { state.volume = volume }
