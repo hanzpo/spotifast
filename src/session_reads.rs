@@ -187,7 +187,10 @@ pub async fn artist_top_tracks(session: &Session, id: &str) -> anyhow::Result<Ve
     let uri = SpotifyUri::from_uri(&format!("spotify:artist:{id}"))?;
     let artist = SessionArtist::get(session, &uri).await?;
     let uris = artist.top_tracks.for_country(&session.country());
-    anyhow::ensure!(!uris.is_empty(), "Spotify has no top songs for this artist here");
+    anyhow::ensure!(
+        !uris.is_empty(),
+        "Spotify has no top songs for this artist here"
+    );
     let found = metadata(session, uris.iter())
         .await
         .map_err(|failure| match failure {
