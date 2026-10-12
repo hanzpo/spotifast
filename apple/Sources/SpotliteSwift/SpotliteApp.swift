@@ -38,9 +38,10 @@ struct SpotliteApp: App {
                     .keyboardShortcut("n")
             }
             CommandGroup(after: .textEditing) {
-                Button("Search") {
+                // As Music: the field at the toolbar's end, Find on most
+                // pages and Search on Search.
+                Button("Find") {
                     model.showNowPlaying = false
-                    model.root = .search
                     model.searchFocused = true
                 }
                 .keyboardShortcut("f")

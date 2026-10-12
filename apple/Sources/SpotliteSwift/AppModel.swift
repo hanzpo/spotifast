@@ -22,8 +22,20 @@ final class AppModel {
             if root != oldValue {
                 path = []
                 forwardStack = []
+                pageChanged()
             }
         }
+    }
+
+    /// Music's Find field: filters the page on show.
+    var findText = ""
+    /// How the song list on show is sorted, from the toolbar's menu or its
+    /// headings; nil is the list's own order.
+    var listSort: SongSort?
+
+    private func pageChanged() {
+        findText = ""
+        listSort = nil
     }
     /// Pages opened on top of the root, as Back and Forward walk them.
     var path: [Route] = []
@@ -34,16 +46,19 @@ final class AppModel {
         guard route != self.route else { return }
         forwardStack = []
         path.append(route)
+        pageChanged()
     }
 
     func back() {
         guard let last = path.popLast() else { return }
         forwardStack.append(last)
+        pageChanged()
     }
 
     func forward() {
         guard let next = forwardStack.popLast() else { return }
         path.append(next)
+        pageChanged()
     }
 
     var canGoBack: Bool { !path.isEmpty }

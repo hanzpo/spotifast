@@ -76,13 +76,19 @@ struct Shell: View {
             .overlay(alignment: .top) { Toast() }
             .navigationTitle(title)
             .toolbar {
+                // As Music: Back once there is somewhere to go back to.
                 ToolbarItemGroup(placement: .navigation) {
-                    Button { model.back() } label: { Image(systemName: "chevron.left") }
-                        .disabled(!model.canGoBack)
-                        .help("Back")
-                    Button { model.forward() } label: { Image(systemName: "chevron.right") }
-                        .disabled(!model.canGoForward)
-                        .help("Forward")
+                    if model.canGoBack {
+                        Button { model.back() } label: { Image(systemName: "chevron.left") }
+                            .help("Back")
+                    }
+                    if model.canGoForward {
+                        Button { model.forward() } label: { Image(systemName: "chevron.right") }
+                            .help("Forward")
+                    }
+                }
+                if model.route.sortable {
+                    ToolbarItem(placement: .primaryAction) { SortMenu() }
                 }
             }
             .inspector(isPresented: Binding(
@@ -108,7 +114,12 @@ struct Shell: View {
         }
         .animation(.easeInOut(duration: 0.25), value: model.showNowPlaying)
         .toolbar(model.showNowPlaying ? .hidden : .automatic, for: .windowToolbar)
-        .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
+        // Music's field at the toolbar's end: Search on the Search page,
+        // and elsewhere Find, which filters the page on show.
+        .searchable(
+            text: model.route == .search ? $model.searchText : $model.findText,
+            placement: .toolbar,
+            prompt: model.route == .search ? "Search" : "Find in \(title)")
         .searchFocused($searchFocused)
         .onChange(of: model.searchFocused) { _, wanted in
             guard wanted else { return }
@@ -120,11 +131,6 @@ struct Shell: View {
         .onKeyPress(.space) {
             model.toggle()
             return .handled
-        }
-        .onChange(of: model.searchText) { _, text in
-            if !text.trimmingCharacters(in: .whitespaces).isEmpty, model.root != .search {
-                model.root = .search
-            }
         }
     }
 
@@ -161,23 +167,25 @@ struct Sidebar: View {
             get: { model.root },
             set: { if let route = $0 { model.root = route } })
         ) {
-            Label("Home", systemImage: "house").tag(Route.home)
+            SidebarLabel("Search", "magnifyingglass").tag(Route.search)
+            SidebarLabel("Home", "house").tag(Route.home)
             Section("Library") {
-                Label("Recently Added", systemImage: "clock").tag(Route.recentlyAdded)
-                Label("Liked Songs", systemImage: "heart")
+                SidebarLabel("Recently Added", "clock").tag(Route.recentlyAdded)
+                SidebarLabel("Artists", "music.microphone").tag(Route.artists)
+                SidebarLabel("Albums", "square.stack").tag(Route.albums)
+                // Liked Songs is Music's Songs: what this account keeps.
+                SidebarLabel("Songs", "music.note")
                     .tag(Route.liked)
                     .dropDestination(for: String.self) { uris, _ in
-                        model.send("library.set", ["uris": uris.map(songURI), "saved": true], done: "Saved to Liked Songs")
+                        model.send("library.set", ["uris": uris.map(songURI), "saved": true], done: "Added to Liked Songs")
                         return true
                     }
-                Label("Albums", systemImage: "square.stack").tag(Route.albums)
-                Label("Artists", systemImage: "music.microphone").tag(Route.artists)
-                Label("Podcasts", systemImage: "dot.radiowaves.left.and.right").tag(Route.podcasts)
-                Label("Episodes", systemImage: "bookmark").tag(Route.episodes)
-                Label("Top Songs", systemImage: "chart.line.uptrend.xyaxis").tag(Route.topSongs)
+                SidebarLabel("Podcasts", "dot.radiowaves.left.and.right").tag(Route.podcasts)
+                SidebarLabel("Episodes", "bookmark").tag(Route.episodes)
+                SidebarLabel("Top Songs", "chart.line.uptrend.xyaxis").tag(Route.topSongs)
             }
             Section {
-                Label("All Playlists", systemImage: "square.grid.2x2").tag(Route.allPlaylists)
+                SidebarLabel("All Playlists", "square.grid.3x3").tag(Route.allPlaylists)
                 ForEach(model.sidebarRows) { row in
                     SidebarRowView(row: row)
                 }
@@ -208,10 +216,10 @@ struct SidebarRowView: View {
             DisclosureGroup {
                 ForEach(row.children ?? []) { child in SidebarRowView(row: child) }
             } label: {
-                Label(row.name, systemImage: "folder")
+                SidebarLabel(row.name, "folder")
             }
         } else if let playlist = row.playlist {
-            Label(playlist.name, systemImage: "music.note.list")
+            SidebarLabel(playlist.name, "music.note.list")
                 .lineLimit(1)
                 .tag(Route.playlist(playlist.id))
                 .contextMenu { PlaylistMenu(playlist: playlist) }
@@ -434,4 +442,62 @@ struct EditPlaylistSheet: View {
 /// its playlist and place after a `#`.
 func songURI(_ payload: String) -> String {
     String(payload.split(separator: "#").first ?? Substring(payload))
+}
+
+/// A sidebar row as Music draws it: the symbol in the accent colour.
+struct SidebarLabel: View {
+    var title: String
+    var symbol: String
+
+    init(_ title: String, _ symbol: String) {
+        self.title = title
+        self.symbol = symbol
+    }
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(.tint)
+        }
+    }
+}
+
+/// Music's sort button beside Find, for a page of songs.
+struct SortMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Picker("Sort By", selection: Binding(
+                get: { model.listSort?.column },
+                set: { column in
+                    model.listSort = column.map { SongSort(column: $0, ascending: model.listSort?.ascending ?? true) }
+                })
+            ) {
+                Text(model.route == .liked ? "Date Added" : "Playlist Order").tag(SongSort.Column?.none)
+                Text("Title").tag(SongSort.Column?.some(.title))
+                Text("Artist").tag(SongSort.Column?.some(.artist))
+                Text("Album").tag(SongSort.Column?.some(.album))
+                Text("Date Added").tag(SongSort.Column?.some(.added))
+                Text("Time").tag(SongSort.Column?.some(.duration))
+            }
+            .pickerStyle(.inline)
+            if model.listSort != nil {
+                Divider()
+                Picker("Order", selection: Binding(
+                    get: { model.listSort?.ascending ?? true },
+                    set: { model.listSort?.ascending = $0 })
+                ) {
+                    Text("Ascending").tag(true)
+                    Text("Descending").tag(false)
+                }
+                .pickerStyle(.inline)
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+        }
+        .menuIndicator(.hidden)
+        .help("Sort")
+    }
 }

@@ -451,6 +451,14 @@ enum Route: Hashable, Sendable {
         }
     }
 
+    /// A page of songs the toolbar's sort menu sorts.
+    var sortable: Bool {
+        switch self {
+        case .liked, .playlist, .topSongs, .radio: true
+        default: false
+        }
+    }
+
     init?(page: String) {
         let parts = page.split(separator: ":", maxSplits: 1).map(String.init)
         switch (parts.first, parts.count > 1 ? parts[1] : nil) {

@@ -159,10 +159,21 @@ struct CardMenu: View {
 
 /// Cards wrapped across the width.
 struct CardGrid: View {
+    @Environment(AppModel.self) private var model
     var cards: [Card]
     var more: (() -> Void)?
 
+    /// The cards Find leaves: by name, or by the line under it.
+    private var shown: [Card] {
+        let needle = model.findText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return cards }
+        return cards.filter {
+            $0.name.lowercased().contains(needle) || ($0.subtitle ?? "").lowercased().contains(needle)
+        }
+    }
+
     var body: some View {
+        let cards = shown
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 200), spacing: 20, alignment: .top)],
                   alignment: .leading, spacing: 24) {
             ForEach(cards) { card in

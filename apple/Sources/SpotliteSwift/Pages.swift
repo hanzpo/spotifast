@@ -212,14 +212,13 @@ struct SongsView: View {
     var method: String
     var params: [String: String]
 
-    @State private var filter = ""
-    @State private var sort: SongSort?
+    private var filter: String { model.findText }
 
     var body: some View {
         Loader(method: method, params: params, loading: { $0.loading }) {
             (page: SongsPage, more: @escaping () -> Void) in
             let tracks = numbered(page.tracks ?? [])
-            let shown = sort.map { $0.apply(filtered(tracks)) } ?? filtered(tracks)
+            let shown = model.listSort.map { $0.apply(filtered(tracks)) } ?? filtered(tracks)
             let playlistID = params["id"].flatMap { method == "playlist.get" ? $0 : nil }
             PageScroll {
                 PageHeader(
@@ -268,12 +267,6 @@ struct SongsView: View {
                         .glassMenu()
                     }
                 }
-                if tracks.count > 12 {
-                    TextField("Find in \(page.kind ?? "List")", text: $filter)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 260)
-                        .padding(.bottom, 12)
-                }
                 if method == "library.episodes" {
                     VStack(spacing: 0) {
                         ForEach(shown) { episode in
@@ -291,9 +284,10 @@ struct SongsView: View {
                         source: SongSource(
                             context: page.context,
                             editablePlaylist: page.editable == true ? playlistID : nil,
-                            reordered: sort != nil || !filter.isEmpty),
-                        more: page.more == true && filter.isEmpty && sort == nil ? more : nil,
-                        sort: method == "album.get" ? nil : $sort)
+                            reordered: model.listSort != nil || !filter.isEmpty),
+                        more: page.more == true && filter.isEmpty && model.listSort == nil ? more : nil,
+                        sort: method == "album.get" ? nil : Binding(
+                            get: { model.listSort }, set: { model.listSort = $0 }))
                 }
                 LoadingFooter(loading: page.loading, error: page.error)
                 if !page.loading, tracks.isEmpty, page.error == nil {
