@@ -27,7 +27,6 @@ struct SpotliteApp: App {
         Window("Spotlite", id: "main") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 1080, minHeight: 640)
                 .task { await model.connect() }
         }
         .windowToolbarStyle(.unified)

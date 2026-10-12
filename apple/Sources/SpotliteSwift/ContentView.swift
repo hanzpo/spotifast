@@ -35,6 +35,10 @@ struct ContentView: View {
         .sheet(item: $model.editingPlaylist) { playlist in
             EditPlaylistSheet(playlist: playlist)
         }
+        // No least size here: the split view sums its columns' own, and a
+        // second one fights it whenever the inspector opens, until AppKit
+        // gives up on the window's constraints.
+        .frame(minHeight: 560)
     }
 }
 

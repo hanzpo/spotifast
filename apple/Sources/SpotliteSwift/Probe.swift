@@ -16,7 +16,10 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard SpotliteApp.probing, let model = Self.model else { return }
-        let size = NSSize(width: 1400, height: 880)
+        // SPOTLITE_PROBE_SIZE, as WIDTHxHEIGHT, tries other window sizes.
+        let parts = (ProcessInfo.processInfo.environment["SPOTLITE_PROBE_SIZE"] ?? "1400x880")
+            .split(separator: "x").compactMap { Double($0) }
+        let size = parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1400, height: 880)
         let window = OffscreenWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
