@@ -207,6 +207,57 @@ pub async fn artist_top_tracks(session: &Session, id: &str) -> anyhow::Result<Ve
         .collect())
 }
 
+/// The artists Spotify relates to one, over the session, with their
+/// pictures: the Web API serves them only from the shared app. They are
+/// read together; one that can't be read is left out.
+pub async fn related_artists(
+    session: &Session,
+    id: &str,
+) -> anyhow::Result<Vec<crate::api::models::Artist>> {
+    use librespot_metadata::Metadata as _;
+    let uri = SpotifyUri::from_uri(&format!("spotify:artist:{id}"))?;
+    let artist = SessionArtist::get(session, &uri).await?;
+    let related: Vec<SpotifyUri> = artist
+        .related
+        .iter()
+        .map(|other| other.id.clone())
+        .take(20)
+        .collect();
+    anyhow::ensure!(
+        !related.is_empty(),
+        "Spotify relates no artists to this one"
+    );
+    let mut reads = tokio::task::JoinSet::new();
+    for (place, uri) in related.into_iter().enumerate() {
+        let session = session.clone();
+        reads.spawn(async move { (place, SessionArtist::get(&session, &uri).await) });
+    }
+    let mut found = Vec::new();
+    while let Some(joined) = reads.join_next().await {
+        if let Ok((place, Ok(artist))) = joined {
+            found.push((place, artist));
+        }
+    }
+    found.sort_by_key(|(place, _)| *place);
+    Ok(found
+        .into_iter()
+        .map(|(_, artist)| {
+            let pictures = if artist.portraits.is_empty() {
+                &artist.portrait_group
+            } else {
+                &artist.portraits
+            };
+            crate::api::models::Artist {
+                id: artist.id.to_id().unwrap_or_default(),
+                uri: artist.id.to_uri().unwrap_or_default(),
+                images: images(pictures),
+                name: artist.name,
+                ..Default::default()
+            }
+        })
+        .collect())
+}
+
 /// Each song of a resolved station once, named by URI or by raw id.
 fn station_songs(context: &librespot_protocol::context::Context) -> Vec<SpotifyUri> {
     let mut seen = BTreeSet::new();

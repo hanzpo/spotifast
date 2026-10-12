@@ -3485,6 +3485,32 @@ async fn handle(
         observe_playlists(api, &response);
         return (response, None);
     }
+    // An artist's similar artists come over the session where it can, as
+    // its top songs below do: the Web API serves them only from the
+    // shared app.
+    if let ApiRequest::RelatedArtists { id } = &request
+        && let Some(engine) = engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    {
+        match tokio::time::timeout(
+            SESSION_READ_TIMEOUT,
+            session_reads::related_artists(engine.session(), id),
+        )
+        .await
+        {
+            Ok(Ok(artists)) => {
+                return (
+                    ApiResponse::RelatedArtists {
+                        id: id.clone(),
+                        result: Ok(artists),
+                    },
+                    None,
+                );
+            }
+            Ok(Err(error)) => log::debug!("session related artists for {id} failed: {error:#}"),
+            Err(_) => log::debug!("session related artists for {id} timed out"),
+        }
+    }
     // An artist's top songs come over the session where it can: the Web
     // API serves them only from the shared app, whose rate limit can hold
     // them back for minutes.
@@ -3753,12 +3779,26 @@ async fn handle(
             query,
             serial,
         },
-        ApiRequest::SearchPlaylists { query, serial } => ApiResponse::SearchPlaylists {
-            result: routed!(search(&query, &["playlist"]))
-                .map(|results| results.playlists.unwrap_or_default()),
-            query,
-            serial,
-        },
+        ApiRequest::SearchPlaylists { query, serial } => {
+            // Only the shared app finds playlists; the same search within a
+            // few hours takes what it found then.
+            let result = match playlist_search_cache::get(&query) {
+                Some(found) => Ok(found),
+                None => {
+                    let result = routed!(search(&query, &["playlist"]))
+                        .map(|results| results.playlists.unwrap_or_default());
+                    if let Ok(found) = &result {
+                        playlist_search_cache::put(&query, found.clone());
+                    }
+                    result
+                }
+            };
+            ApiResponse::SearchPlaylists {
+                result,
+                query,
+                serial,
+            }
+        }
         ApiRequest::Artist { id } => ApiResponse::Artist {
             result: routed!(artist(&id)),
             id,
@@ -3912,6 +3952,52 @@ async fn handle(
     };
     observe_playlists(api, &response);
     (response, expired.get())
+}
+
+/// Playlists found by recent searches. Only the shared app searches
+/// playlists, and its quota is scarce; a search repeated within six hours
+/// takes what it found the first time.
+mod playlist_search_cache {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    use crate::api::models::{Page, Playlist};
+
+    const KEEP: Duration = Duration::from_secs(6 * 60 * 60);
+    const MOST: usize = 100;
+
+    /// Each search's playlists, by the search, with when they were found.
+    type Found = HashMap<String, (Instant, Page<Playlist>)>;
+
+    static FOUND: Mutex<Option<Found>> = Mutex::new(None);
+
+    fn key(query: &str) -> String {
+        query.trim().to_lowercase()
+    }
+
+    pub fn get(query: &str) -> Option<Page<Playlist>> {
+        let found = FOUND.lock().ok()?;
+        let (at, page) = found.as_ref()?.get(&key(query))?;
+        (at.elapsed() < KEEP).then(|| page.clone())
+    }
+
+    pub fn put(query: &str, page: Page<Playlist>) {
+        let Ok(mut found) = FOUND.lock() else {
+            return;
+        };
+        let found = found.get_or_insert_with(HashMap::new);
+        found.retain(|_, (at, _)| at.elapsed() < KEEP);
+        if found.len() >= MOST
+            && let Some(oldest) = found
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(key, _)| key.clone())
+        {
+            found.remove(&oldest);
+        }
+        found.insert(key(query), (Instant::now(), page));
+    }
 }
 
 /// Whether a session signed in as `username` answers for the Web API's
