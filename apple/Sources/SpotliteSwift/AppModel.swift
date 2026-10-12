@@ -1,197 +1,468 @@
+import AppKit
 import Foundation
 import Observation
-
-/// What the sidebar can show.
-enum SidebarItem: Hashable {
-    case liked
-    case playlist(String)
-}
-
-/// The list on screen: its header and its songs.
-struct Detail {
-    var title: String
-    var owner: String?
-    var description: String?
-    var cover: String?
-    var facts: String
-    var context: String?
-    var tracks: [Track]
-    var loading: Bool
-    var error: String?
-}
 
 @Observable
 @MainActor
 final class AppModel {
-    var connection: String?
-    var hello: Hello?
-    var playlists: [Playlist] = []
-    var likedContext: String?
-    var selection: SidebarItem? = .liked {
-        didSet { if selection != oldValue { Task { await loadDetail() } } }
+    enum Connection: Equatable {
+        case connecting
+        case connected
+        case failed(String)
     }
-    var detail: Detail?
+
+    var connection = Connection.connecting
+    var hello: Hello?
+
+    // MARK: Navigation
+
+    /// The sidebar's choice, the root of the page stack.
+    var root: Route = .home {
+        didSet { if root != oldValue { path = [] } }
+    }
+    /// Pages opened on top of the root, as Back and Forward walk them.
+    var path: [Route] = []
+    private var forwardStack: [Route] = []
+    var route: Route { path.last ?? root }
+
+    func open(_ route: Route) {
+        guard route != self.route else { return }
+        forwardStack = []
+        path.append(route)
+    }
+
+    func back() {
+        guard let last = path.popLast() else { return }
+        forwardStack.append(last)
+    }
+
+    func forward() {
+        guard let next = forwardStack.popLast() else { return }
+        path.append(next)
+    }
+
+    var canGoBack: Bool { !path.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
+    // MARK: Library
+
+    var playlists: [Playlist] = []
+    var sidebarRows: [SidebarRow] = []
+    var likedContext: String?
+    /// Bumped after anything that changes what pages show, so they reload.
+    var revision = 0
+
+    // MARK: Search
+
+    var searchText = ""
+
+    // MARK: Player
+
     var player = PlayerState.empty
     /// When `player` arrived, so the position can count on between reports.
     var playerAt = Date()
     /// A seek being dragged, as a fraction.
     var scrubbing: Double?
+    var volumeDragging: Int?
 
-    private var client: Client?
+    // MARK: Panels
+
+    enum Panel: String { case queue, lyrics }
+    var panel: Panel?
+    var queue: QueueState?
+    var lyrics: LyricsState?
+    var devices: [Device] = []
+    var showDevices = false
+
+    // MARK: Messages
+
+    var toast: String?
+    private var toastTask: Task<Void, Never>?
+
+    private(set) var client: Client?
+
+    // MARK: Connecting
+
+    init() {
+        // For screenshots and debugging: the page and panel to start on.
+        let environment = ProcessInfo.processInfo.environment
+        if let page = environment["SPOTLITE_ROUTE"], let route = Route(page: page) {
+            if case .playlist = route { root = route } else if [.home, .search, .liked, .albums, .artists, .podcasts, .topSongs].contains(route) {
+                root = route
+            } else {
+                path = [route]
+            }
+        }
+        if let query = environment["SPOTLITE_SEARCH"] { searchText = query }
+        panel = environment["SPOTLITE_PANEL"].flatMap(Panel.init(rawValue:))
+    }
 
     func connect() async {
+        connection = .connecting
         do {
-            let client = try Client()
+            let client = try await Connector.connect()
             client.onEvent = { [weak self] event, data in
-                guard event == "player", let self,
-                      let state = try? JSONDecoder.api.decode(PlayerState.self, from: data) else { return }
-                self.player = state
-                self.playerAt = Date()
+                self?.handle(event: event, data: data)
             }
             client.onClose = { [weak self] in
-                self?.connection = "Spotlite stopped. Open it and relaunch this app."
+                self?.client = nil
+                self?.connection = .failed("Spotlite stopped.")
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    await self?.connect()
+                }
             }
             self.client = client
-            connection = nil
             hello = try await client.call("hello", as: Hello.self)
-            player = try await client.call("player.state", as: PlayerState.self)
-            playerAt = Date()
-            await loadPlaylists()
-            await loadDetail()
+            connection = .connected
+            if hello?.signedIn == true {
+                await refreshAll()
+            }
         } catch {
-            connection = error.localizedDescription
+            connection = .failed(error.localizedDescription)
         }
     }
 
-    /// Asks again while Spotlite is still fetching, as its API expects.
-    private func poll<T: Decodable>(
-        _ method: String, _ params: [String: Any] = [:], as type: T.Type,
-        loading: (T) -> Bool, update: (T) -> Void
-    ) async {
+    func refreshAll() async {
         guard let client else { return }
-        for attempt in 0..<60 {
-            guard let value = try? await client.call(method, params, as: T.self) else { return }
-            update(value)
-            if !loading(value) { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 10 ? 200 : 600))
+        if let state = try? await client.call("player.state", as: PlayerState.self) {
+            setPlayer(state)
+        }
+        await loadPlaylists()
+        revision += 1
+    }
+
+    private func handle(event: String, data: Data) {
+        switch event {
+        case "player":
+            if let state = try? JSONDecoder.api.decode(PlayerState.self, from: data) {
+                let changedSong = state.uri != player.uri
+                setPlayer(state)
+                if changedSong {
+                    Task {
+                        if panel == .queue { await loadQueue() }
+                        if panel == .lyrics { await loadLyrics() }
+                    }
+                }
+            }
+        case "auth":
+            Task {
+                guard let client else { return }
+                hello = try? await client.call("hello", as: Hello.self)
+                if hello?.signedIn == true { await refreshAll() }
+            }
+        case "library":
+            Task {
+                await loadPlaylists()
+                revision += 1
+            }
+        case "queue":
+            if panel == .queue { Task { await loadQueue() } }
+        case "toast":
+            if let message = try? JSONDecoder.api.decode(String.self, from: data) {
+                show(message)
+            }
+        default:
+            break
+        }
+    }
+
+    private func setPlayer(_ state: PlayerState) {
+        // A drag on the volume keeps the slider where the hand put it.
+        var state = state
+        if let volume = volumeDragging { state.volume = volume }
+        player = state
+        playerAt = Date()
+    }
+
+    func show(_ message: String) {
+        toast = message
+        toastTask?.cancel()
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { toast = nil }
+        }
+    }
+
+    // MARK: Requests
+
+    func call<T: Decodable>(_ method: String, _ params: [String: Any] = [:], as type: T.Type) async throws -> T {
+        guard let client else { throw Client.Failure.closed }
+        return try await client.call(method, params, as: type)
+    }
+
+    /// Sends a command whose reply only matters if it failed.
+    func send(_ method: String, _ params: [String: Any] = [:], done: String? = nil) {
+        guard let client else { return }
+        Task {
+            do {
+                _ = try await client.call(method, params)
+                if let done { show(done) }
+            } catch {
+                show(error.localizedDescription)
+            }
         }
     }
 
     func loadPlaylists() async {
-        await poll("library.playlists", as: PlaylistList.self, loading: \.loading) { list in
+        for attempt in 0..<60 {
+            guard let list = try? await call("library.playlists", as: PlaylistList.self) else { return }
             playlists = list.playlists ?? []
+            sidebarRows = list.rows ?? []
             likedContext = list.likedContext
+            if !list.loading { return }
+            try? await Task.sleep(for: .milliseconds(attempt < 10 ? 250 : 800))
         }
     }
 
-    func loadDetail() async {
-        switch selection {
-        case .liked:
-            await poll("library.liked", as: LikedSongs.self, loading: \.loading) { liked in
-                guard selection == .liked else { return }
-                detail = Detail(
-                    title: "Liked Songs",
-                    owner: hello?.user?.name,
-                    facts: "PLAYLIST · \(liked.total ?? liked.tracks.count) SONGS",
-                    context: liked.context,
-                    tracks: numbered(liked.tracks),
-                    loading: liked.loading,
-                    error: liked.error)
-            }
-        case .playlist(let id):
-            await poll("playlist.get", ["id": id], as: PlaylistDetail.self, loading: \.loading) { page in
-                guard selection == .playlist(id) else { return }
-                let header = page.playlist ?? playlists.first { $0.id == id }
-                let tracks = page.tracks ?? []
-                let minutes = tracks.reduce(0) { $0 + $1.durationMs } / 60_000
-                detail = Detail(
-                    title: header?.name ?? "",
-                    owner: header?.owner.name,
-                    description: header?.description,
-                    cover: header?.cover,
-                    facts: "PLAYLIST · \(page.total ?? tracks.count) SONGS · \(minutes) MIN",
-                    context: header?.uri,
-                    tracks: numbered(tracks),
-                    loading: page.loading,
-                    error: page.error)
-            }
-        case nil:
-            detail = nil
-        }
-    }
-
-    private func numbered(_ tracks: [Track]) -> [Track] {
-        tracks.enumerated().map { index, track in
-            var track = track
-            track.position = index
-            return track
-        }
-    }
+    var editablePlaylists: [Playlist] { playlists.filter { $0.editable == true } }
 
     // MARK: Playback
 
-    func play(_ track: Track) {
+    func play(_ track: Track, in context: String?, tracks: [Track]? = nil) {
         var params: [String: Any] = ["uri": track.uri]
-        if let context = detail?.context {
+        if let context, context.hasPrefix("spotify:station:") {
+            // A radio plays the songs it shows, under the station's name.
+            params["context"] = context
+            params["uris"] = (tracks ?? [track]).map(\.uri)
+            params["index"] = track.position
+        } else if let context {
             params["context"] = context
             params["index"] = track.position
+        } else if track.isEpisode {
+            if let resume = track.resumeMs, track.played != true { params["resume_ms"] = resume }
+        } else if let tracks {
+            // A list with no Spotify context of its own (search results,
+            // an artist's top songs) plays as the songs on screen.
+            params["uris"] = tracks.map(\.uri)
+            params["index"] = track.position
         }
-        client?.send("player.play", params)
+        player.uri = track.uri
+        player.title = track.name
+        player.subtitle = track.artistNames
+        player.image = track.image
+        player.durationMs = track.durationMs
+        player.positionMs = 0
+        player.playing = true
+        player.hasSong = true
+        playerAt = Date()
+        send("player.play", params)
     }
 
-    func playDetail(shuffle: Bool) {
-        guard let context = detail?.context else { return }
-        client?.send("player.shuffle", ["on": shuffle])
-        client?.send("player.play", ["context": context])
+    func play(context: String, shuffle: Bool? = nil) {
+        if let shuffle {
+            player.shuffle = shuffle
+            send("player.shuffle", ["on": shuffle])
+        }
+        send("player.play", ["context": context])
     }
 
     func toggle() {
+        guard player.hasSong else { return }
+        if player.playing == true {
+            player.positionMs = position(at: Date())
+        }
         player.playing?.toggle()
         playerAt = Date()
-        client?.send("player.toggle")
+        send("player.toggle")
     }
 
-    func next() { client?.send("player.next") }
-    func previous() { client?.send("player.previous") }
+    func next() { send("player.next") }
+    func previous() { send("player.previous") }
 
     func toggleShuffle() {
         let on = !(player.shuffle ?? false)
         player.shuffle = on
-        client?.send("player.shuffle", ["on": on])
+        send("player.shuffle", ["on": on])
     }
 
     func cycleRepeat() {
         let next = switch player.repeat {
-        case "off": "context"
+        case "off", nil: "context"
         case "context": "track"
         default: "off"
         }
         player.repeat = next
-        client?.send("player.repeat", ["mode": next])
+        send("player.repeat", ["mode": next])
     }
 
-    func like() {
-        player.saved = !(player.saved ?? false)
-        client?.send("player.like")
+    func toggleSaved(_ uri: String) {
+        if uri == player.uri { player.saved = !(player.saved ?? false) }
+        send("library.toggle", ["uri": uri])
     }
 
     func seek(to fraction: Double) {
         let position = Int(fraction * Double(player.durationMs ?? 0))
-        player.positionMs = position
-        playerAt = Date()
-        client?.send("player.seek", ["position_ms": position])
+        seek(ms: position)
     }
 
-    func setVolume(_ percent: Int) {
-        player.volume = percent
-        client?.send("player.volume", ["percent": percent])
+    func seek(ms: Int) {
+        player.positionMs = max(0, min(ms, player.durationMs ?? ms))
+        playerAt = Date()
+        send("player.seek", ["position_ms": player.positionMs ?? 0])
     }
+
+    func skip(seconds: Int) {
+        seek(ms: position(at: Date()) + seconds * 1000)
+    }
+
+    func setVolume(_ percent: Int, done: Bool) {
+        player.volume = percent
+        volumeDragging = done ? nil : percent
+        send("player.volume", ["percent": percent, "done": done])
+    }
+
+    func changeVolume(by delta: Int) {
+        setVolume(max(0, min(100, (player.volume ?? 0) + delta)), done: true)
+    }
+
+    func toggleMute() { send("player.mute") }
 
     /// Where the song is now, counted on from the last report.
     func position(at date: Date) -> Int {
         let reported = player.positionMs ?? 0
-        guard player.playing == true else { return reported }
+        guard player.playing == true, player.loading != true else { return reported }
         let elapsed = Int(date.timeIntervalSince(playerAt) * 1000)
         return min(reported + elapsed, player.durationMs ?? Int.max)
     }
+
+    // MARK: Queue
+
+    func togglePanel(_ panel: Panel) {
+        self.panel = self.panel == panel ? nil : panel
+        Task {
+            if self.panel == .queue { await loadQueue() }
+            if self.panel == .lyrics { await loadLyrics() }
+        }
+    }
+
+    func loadQueue() async {
+        for attempt in 0..<20 {
+            guard let state = try? await call("queue.get", as: QueueState.self) else { return }
+            queue = state
+            if !state.loading { return }
+            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 200 : 600))
+        }
+    }
+
+    func addToQueue(_ tracks: [Track]) {
+        send(
+            "queue.add",
+            ["songs": tracks.map { ["uri": $0.uri, "name": $0.name] }],
+            done: tracks.count == 1 ? "Added to queue" : "Added \(tracks.count) songs to queue")
+        if panel == .queue { Task { try? await Task.sleep(for: .milliseconds(400)); await loadQueue() } }
+    }
+
+    func playQueued(at index: Int, queued: Bool) {
+        send("queue.play", ["index": index, "queued": queued])
+        Task { try? await Task.sleep(for: .milliseconds(400)); await loadQueue() }
+    }
+
+    /// Moves a song queued by hand; `to` is the row it goes before.
+    func moveQueued(from: Int, to: Int) {
+        if var queued = queue?.queued {
+            queued.move(fromOffsets: IndexSet(integer: from), toOffset: to)
+            queue?.queued = queued
+        }
+        send("queue.move", ["from": from, "to": to])
+    }
+
+    func clearQueue() {
+        queue?.queued = []
+        send("queue.clear")
+    }
+
+    // MARK: Lyrics
+
+    func loadLyrics() async {
+        for attempt in 0..<30 {
+            guard let state = try? await call("lyrics.get", as: LyricsState.self) else { return }
+            lyrics = state
+            if !state.loading { return }
+            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 200 : 600))
+        }
+    }
+
+    // MARK: Devices
+
+    func loadDevices() async {
+        send("devices.refresh")
+        for attempt in 0..<10 {
+            guard let state = try? await call("devices.list", as: DevicesState.self) else { return }
+            devices = state.devices
+            if !state.loading && attempt > 1 { return }
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+    }
+
+    func transfer(to device: Device) {
+        for index in devices.indices { devices[index].active = devices[index].id == device.id }
+        send("devices.transfer", ["id": device.id])
+    }
+
+    // MARK: Library edits
+
+    /// Songs waiting for the New Playlist sheet, which opens while set.
+    var newPlaylistSongs: [Track]?
+    var editingPlaylist: Playlist?
+
+    func requestNewPlaylist(with tracks: [Track] = []) { newPlaylistSongs = tracks }
+
+    func createPlaylist(named name: String, isPublic: Bool, with tracks: [Track] = []) {
+        send(
+            "playlist.create",
+            ["name": name, "public": isPublic, "uris": tracks.map(\.uri)],
+            done: "Created “\(name)”")
+    }
+
+    func add(_ tracks: [Track], to playlist: Playlist) {
+        send(
+            "playlist.add",
+            ["id": playlist.id, "uris": tracks.map(\.uri)],
+            done: "Added to \(playlist.name)")
+    }
+
+    func remove(_ tracks: [Track], from playlistID: String) {
+        send(
+            "playlist.remove",
+            ["id": playlistID, "items": tracks.map { ["uri": $0.uri, "position": $0.position] }])
+        revision += 1
+    }
+
+    func rename(_ playlist: Playlist, to name: String, description: String?) {
+        var params: [String: Any] = ["id": playlist.id, "name": name]
+        if let description { params["description"] = description }
+        send("playlist.edit", params)
+    }
+
+    func delete(_ playlist: Playlist) {
+        if route == .playlist(playlist.id) { back() }
+        if root == .playlist(playlist.id) { root = .home }
+        send("playlist.delete", ["id": playlist.id], done: "Removed “\(playlist.name)”")
+    }
+
+    func toggleLibrary(uri: String) {
+        send("library.toggle", ["uri": uri])
+        revision += 1
+    }
+
+    func follow(artist id: String, follow: Bool) {
+        send("artist.follow", ["id": id, "follow": follow])
+        revision += 1
+    }
+
+    func startRadio(seed: String) { open(.radio(seed)) }
+
+    func copyLink(_ uri: String) {
+        let parts = uri.split(separator: ":")
+        let link = parts.count >= 3 ? "https://open.spotify.com/\(parts[1])/\(parts[2])" : uri
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(link, forType: .string)
+        show("Link copied")
+    }
+
+    // MARK: Account
+
+    func signIn() { send("auth.sign_in") }
+    func signOut() { send("auth.sign_out") }
 }
