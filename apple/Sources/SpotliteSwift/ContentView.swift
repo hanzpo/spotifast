@@ -59,23 +59,3 @@ struct Sidebar: View {
         }
     }
 }
-
-/// Cover art from a URL, with a note in its place until it arrives.
-struct Artwork: View {
-    var url: String?
-    var size: CGFloat
-    var radius: CGFloat = 4
-
-    var body: some View {
-        AsyncImage(url: url.flatMap(URL.init(string:))) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            ZStack {
-                Rectangle().fill(.quaternary)
-                Image(systemName: "music.note").foregroundStyle(.tertiary)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-    }
-}
