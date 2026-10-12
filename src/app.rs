@@ -3341,8 +3341,10 @@ impl App {
         if self.library.playlists.is_loading() || self.library.playlists_refresh.is_some() {
             return;
         }
-        // The last session's list stays up until the fresh one is whole.
-        if self.library.playlists_from_cache && self.library.playlists.get().is_some() {
+        // A list already shown stays up until the fresh one is whole, and
+        // through a reload that fails: the last session's, or this one's
+        // after a playlist was made, renamed or deleted.
+        if self.library.playlists.get().is_some() {
             self.library.playlists_refresh = Some(Vec::new());
         } else {
             self.library.playlists = Loadable::Loading;
@@ -10951,7 +10953,9 @@ mod tests {
             followed: true,
             result: Ok(()),
         });
-        assert!(app.library.playlists.is_loading());
+        // The list shown stays up while the reload gathers its pages.
+        assert!(app.library.playlists_refresh.is_some());
+        assert_eq!(listed_playlists(&app), playlist_ids(&["a", "b"]));
         let new = app.library.playlists_generation;
         assert_ne!(new, old, "a reload is a new load");
         app.handle_api(ApiResponse::MyPlaylists {
@@ -10959,9 +10963,15 @@ mod tests {
             generation: old,
             result: Ok(playlist_page(&["c"], 2, 3)),
         });
-        assert!(
-            app.library.playlists.is_loading(),
-            "the late page is not the reloaded list"
+        assert_eq!(
+            listed_playlists(&app),
+            playlist_ids(&["a", "b"]),
+            "the late page is not taken into the list"
+        );
+        assert_eq!(
+            app.library.playlists_refresh.as_deref().map(<[_]>::len),
+            Some(0),
+            "nor into the reload"
         );
         assert_eq!(app.library.playlists_next, None, "and asks for nothing");
 
@@ -11027,8 +11037,19 @@ mod tests {
         });
         assert_eq!(
             listed_playlists(&app),
-            playlist_ids(&["new", "a"]),
-            "the old load's page is not taken"
+            playlist_ids(&["a", "b"]),
+            "the old load's page is not taken, and the shown list stays"
+        );
+        assert_eq!(
+            app.library
+                .playlists_refresh
+                .as_ref()
+                .map(|gathered| gathered
+                    .iter()
+                    .map(|playlist| playlist.id.as_str())
+                    .collect::<Vec<_>>()),
+            Some(vec!["new", "a"]),
+            "the reload keeps only its own page"
         );
         assert_eq!(
             app.library.playlists_asked,
