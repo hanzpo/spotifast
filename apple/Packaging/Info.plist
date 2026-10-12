@@ -5,17 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Spotlite Swift</string>
+    <string>Spotlite</string>
     <key>CFBundleExecutable</key>
-    <string>SpotliteSwift</string>
+    <string>Spotlite</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>rocks.spotifast.SpotliteSwift</string>
+    <string>rocks.spotifast.Spotlite</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Spotlite Swift</string>
+    <string>Spotlite</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
