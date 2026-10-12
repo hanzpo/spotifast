@@ -83,7 +83,8 @@ struct SongList: View {
                 .simultaneousGesture(TapGesture().modifiers(.shift).onEnded { extend(to: track) })
                 .simultaneousGesture(TapGesture().onEnded { pick(track) })
                 .contextMenu { SongMenu(tracks: picked(around: track), source: source) }
-                .draggable(track.uri)
+                .draggable(dragPayload(track))
+                .dropDestination(for: String.self) { items, _ in reorder(items, onto: track) }
                 .onAppear {
                     if track.id == tracks.last?.id { more?() }
                 }
@@ -99,6 +100,27 @@ struct SongList: View {
         }
         .onKeyPress(.upArrow) { move(-1) }
         .onKeyPress(.downArrow) { move(1) }
+    }
+
+    /// A row dragged out of a playlist this account edits says where it
+    /// came from, so dropping it on another row moves it there. Anything
+    /// else that takes a drop reads only the song's URI before the `#`.
+    private func dragPayload(_ track: Track) -> String {
+        guard let playlist = source.editablePlaylist, !source.reordered else { return track.uri }
+        return "\(track.uri)#\(playlist)#\(track.spotifyPosition ?? track.position)"
+    }
+
+    private func reorder(_ items: [String], onto target: Track) -> Bool {
+        guard let playlist = source.editablePlaylist, !source.reordered,
+              let parts = items.first?.split(separator: "#").map(String.init),
+              parts.count == 3, parts[1] == playlist, let from = Int(parts[2])
+        else { return false }
+        let to = target.spotifyPosition ?? target.position
+        guard from != to else { return false }
+        // Spotify places the song before `to`, counted before it leaves.
+        model.send("playlist.move", ["id": playlist, "from": from, "to": to > from ? to + 1 : to])
+        model.revision += 1
+        return true
     }
 
     private func play(_ track: Track) {

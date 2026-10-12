@@ -160,7 +160,7 @@ struct Sidebar: View {
                 Label("Liked Songs", systemImage: "heart")
                     .tag(Route.liked)
                     .dropDestination(for: String.self) { uris, _ in
-                        model.send("library.set", ["uris": uris, "saved": true], done: "Saved to Liked Songs")
+                        model.send("library.set", ["uris": uris.map(songURI), "saved": true], done: "Saved to Liked Songs")
                         return true
                     }
                 Label("Albums", systemImage: "square.stack").tag(Route.albums)
@@ -210,7 +210,7 @@ struct SidebarRowView: View {
                 .contextMenu { PlaylistMenu(playlist: playlist) }
                 .dropDestination(for: String.self) { uris, _ in
                     guard playlist.editable == true else { return false }
-                    model.send("playlist.add", ["id": playlist.id, "uris": uris], done: "Added to \(playlist.name)")
+                    model.send("playlist.add", ["id": playlist.id, "uris": uris.map(songURI)], done: "Added to \(playlist.name)")
                     return true
                 }
         }
@@ -420,4 +420,10 @@ struct EditPlaylistSheet: View {
             }
         }
     }
+}
+
+/// The song in a drag's payload: a row from an editable playlist carries
+/// its playlist and place after a `#`.
+func songURI(_ payload: String) -> String {
+    String(payload.split(separator: "#").first ?? Substring(payload))
 }
