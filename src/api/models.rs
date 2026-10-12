@@ -31,11 +31,11 @@ where
 pub struct Page<T> {
     #[serde(default = "Vec::new", deserialize_with = "skip_nulls")]
     pub items: Vec<T>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub total: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub limit: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub offset: u32,
     #[serde(default)]
     pub next: Option<String>,
@@ -358,9 +358,9 @@ pub fn join_names<'a>(names: impl Iterator<Item = &'a str>) -> String {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct ResumePoint {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub fully_played: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub resume_position_ms: u32,
 }
 
@@ -375,7 +375,8 @@ pub struct Episode {
     #[serde(default)]
     #[serde(deserialize_with = "null_default")]
     pub uri: String,
-    #[serde(default)]
+    // An episode that is no longer available comes with nulls here.
+    #[serde(default, deserialize_with = "null_default")]
     pub duration_ms: u32,
     #[serde(default)]
     #[serde(deserialize_with = "null_default")]
@@ -384,7 +385,7 @@ pub struct Episode {
     pub images: Vec<Image>,
     #[serde(default)]
     pub release_date: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub explicit: bool,
     #[serde(default)]
     pub resume_point: Option<ResumePoint>,
@@ -847,6 +848,23 @@ pub struct ApiErrorDetail {
 
 #[cfg(test)]
 mod tests {
+    /// Spotify answers a saved episode that is no longer available with
+    /// nulls where numbers belong; the page still loads (Your Episodes
+    /// failed whole on one).
+    #[test]
+    fn saved_episodes_with_nulls_still_load() {
+        let page: Page<SavedEpisode> = serde_json::from_str(
+            r#"{"items":[{"added_at":"2026-01-01T00:00:00Z","episode":{"id":"e1","name":"Gone",
+            "uri":"spotify:episode:e1","duration_ms":null,"explicit":null,
+            "resume_point":{"fully_played":null,"resume_position_ms":null}}}],
+            "total":null,"limit":20,"offset":0,"next":null}"#,
+        )
+        .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].episode.duration_ms, 0);
+        assert_eq!(page.total, 0);
+    }
+
     use super::*;
 
     #[test]
