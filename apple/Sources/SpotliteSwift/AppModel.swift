@@ -78,6 +78,8 @@ final class AppModel {
     var lyrics: LyricsState?
     var devices: [Device] = []
     var showDevices = false
+    /// The full-window player, as Music's Full Screen Player.
+    var showNowPlaying = false
 
     // MARK: Messages
 
@@ -100,6 +102,7 @@ final class AppModel {
         }
         if let query = environment["SPOTLITE_SEARCH"] { searchText = query }
         panel = environment["SPOTLITE_PANEL"].flatMap(Panel.init(rawValue:))
+        showNowPlaying = environment["SPOTLITE_NOW_PLAYING"] != nil
     }
 
     func connect() async {

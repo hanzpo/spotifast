@@ -45,6 +45,11 @@ struct SpotliteApp: App {
                     .keyboardShortcut("]")
                     .disabled(!model.canGoForward)
                 Divider()
+                Button(model.showNowPlaying ? "Exit Full Screen Player" : "Full Screen Player") {
+                    model.showNowPlaying.toggle()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(!model.player.hasSong && !model.showNowPlaying)
                 Button("Lyrics") { model.togglePanel(.lyrics) }
                     .keyboardShortcut("u", modifiers: [.command, .option])
                 Button("Playing Next") { model.togglePanel(.queue) }

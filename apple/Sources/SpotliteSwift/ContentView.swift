@@ -98,6 +98,15 @@ struct Shell: View {
                 .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
             }
         }
+        .overlay {
+            if model.showNowPlaying {
+                NowPlayingView()
+                    .transition(.opacity.combined(with: .scale(scale: 1.02)))
+                    .ignoresSafeArea()
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: model.showNowPlaying)
+        .toolbar(model.showNowPlaying ? .hidden : .automatic, for: .windowToolbar)
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
         // Space plays and pauses, as in Music; a text field being typed in
         // takes its own spaces first.

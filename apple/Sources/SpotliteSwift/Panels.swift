@@ -175,11 +175,15 @@ struct PanelHeader: View {
 struct LyricsView: View {
     @Environment(AppModel.self) private var model
     @State private var following = true
+    /// In the panel the view has its own heading; the Now Playing view
+    /// shows the words alone, larger.
+    var header = true
+    var size: CGFloat = 22
 
     var body: some View {
         let lyrics = model.lyrics
         VStack(spacing: 0) {
-            PanelHeader(title: "Lyrics")
+            if header { PanelHeader(title: "Lyrics") }
             if let lyrics, !lyrics.lines.isEmpty, lyrics.uri == model.player.uri {
                 TimelineView(.periodic(from: .now, by: 0.25)) { context in
                     let position = model.position(at: context.date)
@@ -189,7 +193,7 @@ struct LyricsView: View {
                             VStack(alignment: .leading, spacing: 18) {
                                 ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
                                     Text(line.text.isEmpty ? "♪" : line.text)
-                                        .font(.system(size: 22, weight: .bold))
+                                        .font(.system(size: size, weight: .bold))
                                         .foregroundStyle(lineStyle(index: index, active: active, synced: lyrics.synced))
                                         .multilineTextAlignment(.leading)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -295,5 +299,117 @@ struct DevicesView: View {
         .padding(14)
         .frame(width: 290)
         .task { await model.loadDevices() }
+    }
+}
+
+// MARK: Now Playing
+
+/// The full-window player: the cover large on a blur of itself, the song,
+/// its controls, and its words beside it.
+struct NowPlayingView: View {
+    @Environment(AppModel.self) private var model
+    @State private var lyrics = true
+
+    var body: some View {
+        let player = model.player
+        GeometryReader { geometry in
+            let art = min(geometry.size.height * 0.52, geometry.size.width * 0.36, 520)
+            ZStack {
+                // Opaque beneath the blur, which thins at its edges.
+                Color.black
+                Artwork(url: player.cover ?? player.image, size: max(geometry.size.width, geometry.size.height))
+                    .scaleEffect(1.4)
+                    .blur(radius: 80)
+                    .overlay(Color.black.opacity(0.45))
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                HStack(spacing: 56) {
+                    VStack(spacing: 22) {
+                        Artwork(url: player.cover ?? player.image, size: art, radius: 12)
+                            .shadow(color: .black.opacity(0.4), radius: 30, y: 16)
+                        VStack(spacing: 4) {
+                            Text(player.title ?? "")
+                                .font(.title2.weight(.bold))
+                                .lineLimit(1)
+                            Text(player.subtitle ?? "")
+                                .font(.title3)
+                                .foregroundStyle(.white.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                        .frame(width: art)
+                        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                            let duration = max(player.durationMs ?? 0, 1)
+                            let position = model.scrubbing.map { Int($0 * Double(duration)) }
+                                ?? model.position(at: context.date)
+                            VStack(spacing: 4) {
+                                SeekLine(fraction: Double(position) / Double(duration))
+                                HStack {
+                                    Text(formatTime(ms: position))
+                                    Spacer()
+                                    Text("-" + formatTime(ms: duration - position))
+                                }
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.7))
+                            }
+                            .frame(width: art)
+                        }
+                        HStack(spacing: 36) {
+                            Button(action: model.toggleShuffle) {
+                                Image(systemName: "shuffle")
+                                    .foregroundStyle(player.shuffle == true ? AnyShapeStyle(.tint) : AnyShapeStyle(.white.opacity(0.7)))
+                            }
+                            Button(action: model.previous) { Image(systemName: "backward.fill").font(.title) }
+                            Button(action: model.toggle) {
+                                Image(systemName: player.playing == true ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 42))
+                                    .frame(width: 48)
+                            }
+                            Button(action: model.next) { Image(systemName: "forward.fill").font(.title) }
+                            Button(action: model.cycleRepeat) {
+                                Image(systemName: player.repeat == "track" ? "repeat.1" : "repeat")
+                                    .foregroundStyle(player.repeat == "off" || player.repeat == nil
+                                        ? AnyShapeStyle(.white.opacity(0.7)) : AnyShapeStyle(.tint))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.title3)
+                    }
+                    if lyrics {
+                        LyricsView(header: false, size: 30)
+                            .frame(maxWidth: 560)
+                            .frame(height: geometry.size.height * 0.8)
+                            .mask(LinearGradient(
+                                stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12),
+                                        .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
+                                startPoint: .top, endPoint: .bottom))
+                    }
+                }
+                .foregroundStyle(.white)
+                .padding(48)
+                VStack {
+                    HStack {
+                        Button { model.showNowPlaying = false } label: {
+                            Image(systemName: "chevron.down").frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .keyboardShortcut(.escape, modifiers: [])
+                        .help("Close")
+                        Spacer()
+                        Button { lyrics.toggle() } label: {
+                            Image(systemName: "quote.bubble").frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .help(lyrics ? "Hide Lyrics" : "Show Lyrics")
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 50)
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .task(id: player.uri) { await model.loadLyrics() }
     }
 }

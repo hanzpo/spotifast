@@ -132,7 +132,8 @@ struct NowPlaying: View {
         let player = model.player
         HStack(spacing: 10) {
             Artwork(url: player.image, size: 44, radius: 5)
-                .onTapGesture { openSource() }
+                .onTapGesture { if player.hasSong { model.showNowPlaying = true } }
+                .help("Show Now Playing")
                 .draggable(player.uri ?? "")
             if player.hasSong {
                 VStack(spacing: 1) {
