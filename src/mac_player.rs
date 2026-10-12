@@ -17,8 +17,8 @@ use objc2::{MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSBezierPath, NSButton, NSClickGestureRecognizer, NSColor, NSControlSize,
     NSEvent, NSEventType, NSFont, NSFontWeightMedium, NSFontWeightRegular, NSGestureRecognizer,
-    NSGlassEffectView, NSGlassEffectViewStyle, NSImage, NSImageSymbolConfiguration, NSImageView,
-    NSLineBreakMode, NSSlider, NSTextAlignment, NSTextField, NSView,
+    NSGlassEffectView, NSGlassEffectViewStyle, NSImage, NSImageScaling, NSImageSymbolConfiguration,
+    NSImageView, NSLineBreakMode, NSSlider, NSTextAlignment, NSTextField, NSView,
 };
 use objc2_foundation::{MainThreadMarker, NSData, NSObject, NSPoint, NSRect, NSSize, NSString};
 
@@ -362,6 +362,9 @@ impl Capsule {
         }
 
         let art = NSImageView::initWithFrame(mtm.alloc(), NSRect::ZERO);
+        // Fill the square whatever size the file says it is: a JPEG's
+        // DPI can make AppKit think a cover is a few points across.
+        art.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
         art.setWantsLayer(true);
         round(&art, 5.0);
         content.addSubview(&art);
@@ -766,7 +769,8 @@ pub fn show(app: &mut App, ctx: &egui::Context, capsule: Rect) {
         None => position,
     };
     let art = now.as_ref().and_then(|now| {
-        let url = now.art_small.as_deref().or(now.art_url.as_deref())?;
+        // The larger cover, so it stays sharp on a Retina display.
+        let url = now.art_url.as_deref().or(now.art_small.as_deref())?;
         app.media_art_file(ctx, url)
     });
     let zoom = f64::from(ctx.zoom_factor());
