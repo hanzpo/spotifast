@@ -66,6 +66,10 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
         .images
         .thumbnail
         .and_then(|uri| app.softened_covers.texture(ui.ctx(), &art, uri));
+    if theme::apple_layout() {
+        apple_hero(app, ui, &hero, softened.as_ref());
+        return;
+    }
     ui.add_space(12.0);
     let cover_size = if ui.available_width() > 720.0 {
         212.0
@@ -76,26 +80,7 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
         ui.spacing_mut().item_spacing.x = 24.0;
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(cover_size), Sense::hover());
         let radius = if hero.round { cover_size / 2.0 } else { 6.0 };
-        widgets::paint_shadow(ui, &palette, rect, radius);
-        if hero.liked {
-            super::sidebar::liked_cover(ui, rect, radius);
-        } else {
-            widgets::paint_cover_with_thumbnail(
-                ui,
-                &palette,
-                widgets::CoverSources {
-                    requested: hero.images.image,
-                    previous: hero.images.previous,
-                    softened: softened.as_ref(),
-                    thumbnail: hero.images.thumbnail,
-                    align_thumbnail: hero.images.align_thumbnail,
-                },
-                rect,
-                radius,
-                if hero.round { Icon::User } else { Icon::Music },
-                Some(app.backend.art()),
-            );
-        }
+        paint_hero_cover(app, ui, &hero, softened.as_ref(), rect, radius);
         ui.vertical(|ui| {
             let width = ui.available_width();
             ui.set_width(width);
@@ -155,6 +140,142 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
     ui.add_space(20.0);
 }
 
+fn paint_hero_cover(
+    app: &App,
+    ui: &egui::Ui,
+    hero: &Hero<'_>,
+    softened: Option<&egui::TextureHandle>,
+    rect: Rect,
+    radius: f32,
+) {
+    let palette = app.palette;
+    widgets::paint_shadow(ui, &palette, rect, radius);
+    if hero.liked {
+        super::sidebar::liked_cover(ui, rect, radius);
+    } else {
+        widgets::paint_cover_with_thumbnail(
+            ui,
+            &palette,
+            widgets::CoverSources {
+                requested: hero.images.image,
+                previous: hero.images.previous,
+                softened,
+                thumbnail: hero.images.thumbnail,
+                align_thumbnail: hero.images.align_thumbnail,
+            },
+            rect,
+            radius,
+            if hero.round { Icon::User } else { Icon::Music },
+            Some(app.backend.art()),
+        );
+    }
+}
+
+/// Music's album header: the cover, and beside it the title in bold, who
+/// made it in the accent, a small line of facts, and the actions along the
+/// cover's foot (see [`actions_row`]).
+fn apple_hero(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    hero: &Hero<'_>,
+    softened: Option<&egui::TextureHandle>,
+) {
+    let palette = app.palette;
+    ui.add_space(8.0);
+    let cover_size = if ui.available_width() > 760.0 {
+        250.0
+    } else {
+        180.0
+    };
+    let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), cover_size), Sense::hover());
+    let cover = Rect::from_min_size(row.min, Vec2::splat(cover_size));
+    let radius = if hero.round { cover_size / 2.0 } else { 8.0 };
+    paint_hero_cover(app, ui, hero, softened, cover, radius);
+    let column = Rect::from_min_max(pos2(cover.right() + 28.0, row.top()), row.max);
+    let actions = Rect::from_min_max(
+        pos2(column.left(), column.bottom() - theme::APPLE_BUTTON_HEIGHT),
+        column.max,
+    );
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(hero_actions_id(), (actions, pass)));
+
+    // Who made it leads the byline; the rest are facts for the small line.
+    let makers = hero
+        .byline
+        .iter()
+        .enumerate()
+        .take_while(|(index, (_, page))| *index == 0 || page.is_some())
+        .count();
+    let facts: Vec<String> = std::iter::once(hero.kind.to_string())
+        .chain(hero.byline[makers..].iter().map(|(text, _)| text.clone()))
+        .filter(|text| !text.is_empty())
+        .map(|text| text.to_uppercase())
+        .collect();
+
+    // Laid out from the foot up, so the words settle above the buttons.
+    let text_rect = Rect::from_min_max(
+        column.min,
+        pos2(column.right(), actions.top() - cover_size * 0.14),
+    );
+    let mut text = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(text_rect)
+            .layout(Layout::bottom_up(Align::Min)),
+    );
+    text.spacing_mut().item_spacing.y = 4.0;
+    let width = text_rect.width();
+    if let Some(description) = &hero.description
+        && !description.is_empty()
+    {
+        text.add_space(2.0);
+        theme::text(
+            &mut text,
+            description.as_str(),
+            theme::regular(12.5),
+            palette.secondary,
+        );
+    }
+    theme::text(
+        &mut text,
+        facts.join(" · "),
+        theme::semibold(11.0),
+        palette.secondary,
+    );
+    text.add_space(2.0);
+    text.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (index, (name, page)) in hero.byline[..makers].iter().enumerate() {
+            if index > 0 {
+                theme::text(ui, ", ", theme::regular(20.0), palette.accent);
+            }
+            match page {
+                Some(page) => {
+                    if theme::link(ui, name, theme::regular(20.0), palette.accent).clicked() {
+                        app.actions.push(Action::Open(page.clone()));
+                    }
+                }
+                None => {
+                    theme::text(ui, name, theme::regular(20.0), palette.accent);
+                }
+            }
+        }
+    });
+    let mut size = 28.0;
+    while size > 20.0
+        && text
+            .painter()
+            .layout_no_wrap(hero.title.to_string(), theme::bold(size), palette.text)
+            .size()
+            .x
+            > width
+    {
+        size -= 2.0;
+    }
+    theme::text(&mut text, hero.title, theme::bold(size), palette.text);
+    ui.add_space(24.0);
+}
+
 pub struct Actions<'a> {
     pub play_uri: Option<String>,
     /// Playable songs in the sorted or filtered view, in displayed order.
@@ -181,8 +302,9 @@ pub fn actions_row(
 ) {
     let palette = app.palette;
     let locale = app.locale;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 18.0;
+    let apple = theme::apple_layout();
+    let body = |ui: &mut egui::Ui| {
+        ui.spacing_mut().item_spacing.x = if apple { 10.0 } else { 18.0 };
         if let Some(uri) = &actions.play_uri {
             let now_playing_here = app.playing_context_uri().as_deref() == Some(uri.as_str())
                 && app.believed_playing();
@@ -197,7 +319,14 @@ pub fn actions_row(
             } else {
                 Icon::PlayFilled
             };
-            if app.play_pending(uri) {
+            let play_label = if now_playing_here {
+                gettext(locale, "Pause")
+            } else {
+                gettext(locale, "Play")
+            };
+            if app.play_pending(uri) && apple {
+                theme::apple_pill_spinner(ui, &palette, &gettext(locale, "Starting…"));
+            } else if app.play_pending(uri) {
                 theme::circle_spinner(
                     ui,
                     56.0,
@@ -207,19 +336,19 @@ pub fn actions_row(
                 );
             } else if ui
                 .add_enabled_ui(now_playing_here || can_start, |ui| {
-                    theme::circle_button(
-                        ui,
-                        icon,
-                        56.0,
-                        palette.accent,
-                        palette.accent_hover,
-                        palette.on_accent,
-                        &if now_playing_here {
-                            gettext(locale, "Pause")
-                        } else {
-                            gettext(locale, "Play")
-                        },
-                    )
+                    if apple {
+                        theme::apple_pill(ui, &palette, icon, &play_label, false)
+                    } else {
+                        theme::circle_button(
+                            ui,
+                            icon,
+                            56.0,
+                            palette.accent,
+                            palette.accent_hover,
+                            palette.on_accent,
+                            &play_label,
+                        )
+                    }
                 })
                 .inner
                 .on_disabled_hover_text(gettext(locale, "No playable songs in this view").as_ref())
@@ -250,7 +379,25 @@ pub fn actions_row(
                 }
             }
             let shuffle = app.playing_context_shuffle();
-            if theme::icon_button(
+            let shuffle_label = if shuffle {
+                gettext(locale, "Shuffle off")
+            } else {
+                gettext(locale, "Shuffle")
+            };
+            if apple {
+                if theme::apple_pill(
+                    ui,
+                    &palette,
+                    Icon::Shuffle,
+                    &gettext(locale, "Shuffle"),
+                    shuffle,
+                )
+                .on_hover_text(shuffle_label.as_ref())
+                .clicked()
+                {
+                    app.actions.push(Action::SetShuffle(!shuffle));
+                }
+            } else if theme::icon_button(
                 ui,
                 Icon::Shuffle,
                 26.0,
@@ -266,11 +413,7 @@ pub fn actions_row(
                 } else {
                     palette.text
                 },
-                &if shuffle {
-                    gettext(locale, "Shuffle off")
-                } else {
-                    gettext(locale, "Shuffle")
-                },
+                &shuffle_label,
             )
             .clicked()
             {
@@ -291,32 +434,58 @@ pub fn actions_row(
                     palette.secondary,
                 )
             };
-            if theme::icon_button(ui, icon, 26.0, color, palette.text, tooltip).clicked() {
+            let clicked = if apple {
+                let icon = if *saved { Icon::Check } else { Icon::Plus };
+                theme::apple_circle(ui, &palette, icon, palette.accent, tooltip).clicked()
+            } else {
+                theme::icon_button(ui, icon, 26.0, color, palette.text, tooltip).clicked()
+            };
+            if clicked {
                 app.actions.push(Action::ToggleSaved(uri.clone()));
             }
         }
         if let Some(seed) = &actions.save_radio
-            && theme::icon_button(
-                ui,
-                Icon::CirclePlus,
-                26.0,
-                palette.secondary,
-                palette.text,
-                &gettext(locale, "Save as playlist"),
-            )
+            && if apple {
+                theme::apple_circle(
+                    ui,
+                    &palette,
+                    Icon::Plus,
+                    palette.accent,
+                    &gettext(locale, "Save as playlist"),
+                )
+            } else {
+                theme::icon_button(
+                    ui,
+                    Icon::CirclePlus,
+                    26.0,
+                    palette.secondary,
+                    palette.text,
+                    &gettext(locale, "Save as playlist"),
+                )
+            }
             .clicked()
         {
             app.actions.push(Action::SaveRadio(seed.clone()));
         }
         if let Some(uri) = &actions.play_uri {
-            let more = theme::icon_button(
-                ui,
-                Icon::Ellipsis,
-                26.0,
-                palette.secondary,
-                palette.text,
-                &gettext(locale, "More"),
-            );
+            let more = if apple {
+                theme::apple_circle(
+                    ui,
+                    &palette,
+                    Icon::Ellipsis,
+                    palette.accent,
+                    &gettext(locale, "More"),
+                )
+            } else {
+                theme::icon_button(
+                    ui,
+                    Icon::Ellipsis,
+                    26.0,
+                    palette.secondary,
+                    palette.text,
+                    &gettext(locale, "More"),
+                )
+            };
             egui::Popup::menu(&more)
                 .frame(widgets::menu_frame(&palette))
                 .show(|ui| {
@@ -372,12 +541,42 @@ pub fn actions_row(
                     egui::Id::new(("collection-filter", actions.name)),
                     filter,
                     &gettext(locale, "Filter"),
-                    220.0,
+                    if apple { 200.0 } else { 220.0 },
                 );
             });
         }
-    });
-    ui.add_space(14.0);
+    };
+    // Music sets the buttons along the foot of the cover, beside it.
+    match apple.then(|| take_hero_actions_slot(ui)).flatten() {
+        Some(slot) => {
+            let mut row = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(slot)
+                    .layout(Layout::left_to_right(Align::Center)),
+            );
+            body(&mut row);
+            ui.add_space(4.0);
+        }
+        None => {
+            ui.horizontal(body);
+            ui.add_space(14.0);
+        }
+    }
+}
+
+/// Where a hero drawn this pass wants its actions, once.
+fn take_hero_actions_slot(ui: &egui::Ui) -> Option<Rect> {
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data_mut(|data| {
+        let slot = data.get_temp::<(Rect, u64)>(hero_actions_id());
+        data.remove::<(Rect, u64)>(hero_actions_id());
+        slot.filter(|(_, drawn)| *drawn == pass)
+            .map(|(rect, _)| rect)
+    })
+}
+
+fn hero_actions_id() -> egui::Id {
+    egui::Id::new("hero-actions-slot")
 }
 
 /// A track table with virtualised rows and paging.

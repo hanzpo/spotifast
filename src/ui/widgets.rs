@@ -1318,7 +1318,25 @@ fn track_row_contents(
             .is_some_and(|uri| uri == row.item.uri());
     let playing = is_current && app.believed_playing();
     let hovered = ui.rect_contains_pointer(rect) || response.has_focus();
-    if row.picked {
+    // Music's song lists: stripes on alternate rows, and a selection in
+    // the accent with its words in white.
+    let apple = theme::apple_layout() && !row.compact && !row.thin;
+    let mut palette = palette;
+    if apple && row.picked {
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(6),
+            if hovered {
+                palette.accent_hover
+            } else {
+                palette.accent
+            },
+        );
+        palette.text = palette.on_accent;
+        palette.secondary = palette.on_accent.gamma_multiply(0.82);
+        palette.dim = palette.on_accent.gamma_multiply(0.6);
+        palette.accent = palette.on_accent;
+    } else if row.picked {
         // Keep the existing translucent selection, using a neutral palette
         // color so selecting a song does not mark it as playing.
         ui.painter().rect_filled(
@@ -1335,6 +1353,16 @@ fn track_row_contents(
             palette
                 .surface_hover
                 .gamma_multiply(if palette.dark { 0.7 } else { 1.0 }),
+        );
+    } else if apple && row.index % 2 == 1 {
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(6),
+            if palette.dark {
+                Color32::from_white_alpha(7)
+            } else {
+                Color32::from_black_alpha(9)
+            },
         );
     }
     // The row highlight also shows keyboard focus. Do not add an outline
@@ -2001,7 +2029,20 @@ pub fn table_header(
     use crate::model::SortColumn;
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(vec2(width, 34.0), Sense::hover());
-    let font = theme::regular(12.0);
+    // Music heads its columns in words, not capitals.
+    let apple = theme::apple_layout();
+    let font = if apple {
+        theme::semibold(11.5)
+    } else {
+        theme::regular(12.0)
+    };
+    let label = |caps: &'static str, words: &'static str| {
+        if apple {
+            pgettext(locale, "column heading", words)
+        } else {
+            pgettext(locale, "column heading", caps)
+        }
+    };
     let color = palette.secondary;
     let mut clicked = None;
     let mut heading = |ui: &mut Ui, x: f32, text: &str, column: SortColumn| {
@@ -2071,7 +2112,7 @@ pub fn table_header(
             )
         });
         theme::focus_ring(ui, &response);
-        let number_color = if natural || active.is_some() {
+        let number_color = if (natural && !apple) || active.is_some() {
             palette.accent
         } else if response.hovered() {
             palette.text
@@ -2087,7 +2128,7 @@ pub fn table_header(
         );
         if let Some(ascending) = active
             .map(|sort| sort.ascending)
-            .or(natural.then_some(true))
+            .or((natural && !apple).then_some(true))
         {
             let center = pos2(number.center().x + 12.0, rect.center().y);
             let (wing, tip) = if ascending { (2.8, -3.2) } else { (-2.8, 3.2) };
@@ -2112,12 +2153,7 @@ pub fn table_header(
     if show_cover {
         x += 52.0;
     }
-    heading(
-        ui,
-        x,
-        &pgettext(locale, "column heading", "TITLE"),
-        SortColumn::Title,
-    );
+    heading(ui, x, &label("TITLE", "Title"), SortColumn::Title);
     let medium = width > 560.0;
     let wide = width > 760.0;
     let album_width = if show_album && medium {
@@ -2135,28 +2171,18 @@ pub fn table_header(
     let right_fixed = 36.0 + 56.0 + 36.0 + 8.0;
     let mut cx = rect.right() - right_fixed - added_width - added_by_width - album_width;
     if album_width > 0.0 {
-        heading(
-            ui,
-            cx,
-            &pgettext(locale, "column heading", "ALBUM"),
-            SortColumn::Album,
-        );
+        heading(ui, cx, &label("ALBUM", "Album"), SortColumn::Album);
         cx += album_width;
     }
     if added_by_width > 0.0 {
-        heading(
-            ui,
-            cx,
-            &pgettext(locale, "column heading", "ADDED BY"),
-            SortColumn::AddedBy,
-        );
+        heading(ui, cx, &label("ADDED BY", "Added By"), SortColumn::AddedBy);
         cx += added_by_width;
     }
     if added_width > 0.0 {
         heading(
             ui,
             cx,
-            &pgettext(locale, "column heading", "DATE ADDED"),
+            &label("DATE ADDED", "Date Added"),
             SortColumn::Added,
         );
     }

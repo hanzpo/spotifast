@@ -326,6 +326,27 @@ pub fn sidebar_hover(palette: &Palette) -> Color32 {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Lets a test draw the Apple Music layout on any platform.
+    pub static APPLE_LAYOUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the window takes Apple Music's layout: a source list for a
+/// sidebar, search at the toolbar's end, a compact player capsule and
+/// Music's album pages. macOS draws it; elsewhere the shared layout stays.
+/// Tests keep the shared layout unless they ask for this one.
+pub fn apple_layout() -> bool {
+    #[cfg(test)]
+    {
+        APPLE_LAYOUT.with(std::cell::Cell::get)
+    }
+    #[cfg(not(test))]
+    {
+        cfg!(target_os = "macos")
+    }
+}
+
 pub const RADIUS: u8 = 10;
 pub const RADIUS_SMALL: u8 = 6;
 pub const ROW_HEIGHT: f32 = 56.0;
@@ -338,6 +359,20 @@ pub const PLAYER_BAR_HEIGHT: f32 = 88.0;
 /// has to suit the other, or the window would jump on the swap.
 pub const SIDE_PANEL_MIN_WIDTH: f32 = 280.0;
 pub const TOP_BAR_HEIGHT: f32 = 56.0;
+/// Music's toolbar: one band that the traffic lights share, centred in it.
+pub const APPLE_TOOLBAR_HEIGHT: f32 = 52.0;
+
+/// How tall the toolbar is, counting the room the traffic lights take.
+/// Music sets them in the toolbar's own band; otherwise they get a strip
+/// of their own above it.
+pub fn toolbar_height(ctx: &egui::Context) -> f32 {
+    let inset = titlebar_inset(ctx);
+    if apple_layout() && inset > 0.0 {
+        APPLE_TOOLBAR_HEIGHT
+    } else {
+        TOP_BAR_HEIGHT + inset
+    }
+}
 
 /// macOS hides the titlebar and draws the window content all the way to the
 /// top edge, so whatever sits at the top of the window has to leave room for
@@ -805,6 +840,127 @@ pub fn pill_button(ui: &mut egui::Ui, palette: &Palette, label: &str, primary: b
     }
     focus_ring(ui, &response);
     response
+}
+
+/// The tint Music lays under its header buttons: translucent, so it reads
+/// on any page colour.
+fn apple_button_fill(palette: &Palette, hovered: bool) -> Color32 {
+    let alpha = match (palette.dark, hovered) {
+        (true, false) => 26,
+        (true, true) => 40,
+        (false, false) => 14,
+        (false, true) => 24,
+    };
+    if palette.dark {
+        Color32::from_white_alpha(alpha)
+    } else {
+        Color32::from_black_alpha(alpha)
+    }
+}
+
+/// The height of Music's header buttons.
+pub const APPLE_BUTTON_HEIGHT: f32 = 32.0;
+
+/// Music's Play and Shuffle: a tinted pill whose icon and label wear the
+/// accent, or the accent itself while `on`.
+pub fn apple_pill(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    icon: Icon,
+    label: &str,
+    on: bool,
+) -> Response {
+    let font = semibold(13.5);
+    let content = if on {
+        palette.on_accent
+    } else {
+        palette.accent
+    };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font, content);
+    let icon_size = 14.0;
+    let width = (galley.size().x + icon_size + 6.0 + 2.0 * 18.0).max(104.0);
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(width, APPLE_BUTTON_HEIGHT), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), on, label)
+    });
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered() && ui.is_enabled();
+        let fill = match (on, hovered) {
+            (true, false) => palette.accent,
+            (true, true) => palette.accent_hover,
+            (false, _) => apple_button_fill(palette, hovered),
+        };
+        let content = if ui.is_enabled() {
+            content
+        } else {
+            content.gamma_multiply(0.45)
+        };
+        ui.painter().rect_filled(rect, rect.height() / 2.0, fill);
+        let left = rect.center().x - (icon_size + 6.0 + galley.size().x) / 2.0;
+        let icon_rect = egui::Rect::from_center_size(
+            egui::pos2(left + icon_size / 2.0, rect.center().y),
+            Vec2::splat(icon_size),
+        );
+        paint_icon(ui, icon, icon_rect, icon_size, content);
+        let pos = egui::pos2(
+            left + icon_size + 6.0,
+            rect.center().y - galley.size().y / 2.0,
+        );
+        ui.painter().galley(pos, galley, content);
+    }
+    focus_ring(ui, &response);
+    response
+}
+
+/// A [`apple_pill`] whose content is replaced by a spinner while Spotify
+/// starts playing.
+pub fn apple_pill_spinner(ui: &mut egui::Ui, palette: &Palette, tooltip: &str) -> Response {
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(104.0, APPLE_BUTTON_HEIGHT), Sense::hover());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            ui.is_enabled(),
+            tooltip,
+        )
+    });
+    if ui.is_rect_visible(rect) {
+        ui.painter()
+            .rect_filled(rect, rect.height() / 2.0, apple_button_fill(palette, false));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(
+            egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+        ));
+        spinner(&mut child, 16.0, palette.accent);
+    }
+    response.on_hover_text(tooltip)
+}
+
+/// Music's round header button: an icon on the same tint as its pills.
+pub fn apple_circle(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    icon: Icon,
+    color: Color32,
+    tooltip: &str,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(APPLE_BUTTON_HEIGHT), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tooltip)
+    });
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered() && ui.is_enabled();
+        ui.painter().circle_filled(
+            rect.center(),
+            rect.height() / 2.0,
+            apple_button_fill(palette, hovered),
+        );
+        paint_icon(ui, icon, rect, 16.0, color);
+    }
+    focus_ring(ui, &response);
+    response.on_hover_text(tooltip)
 }
 
 /// A muted button with an icon and label, for row and header actions.

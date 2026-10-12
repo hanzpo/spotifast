@@ -29,6 +29,11 @@ const SEARCH_FLOOR: f32 = 130.0;
 // After the badges collapse, a right panel can leave less than 130 points.
 // Keep the original 80-point minimum inside the page's own toolbar.
 const SEARCH_MIN: f32 = 80.0;
+/// The room Music's traffic lights take at the toolbar's start, past the
+/// page padding.
+const WINDOW_BUTTONS_WIDTH: f32 = 64.0;
+/// Music's search field at the toolbar's end.
+const APPLE_SEARCH_WIDTH: f32 = 240.0;
 /// Everything at the right end whose width never changes: the page padding,
 /// the avatar, the gap the account menu leaves, the Settings button, and the
 /// spacing between them. The cursor stops at the left edge of the button, so
@@ -207,6 +212,67 @@ fn nav_button_in(
     }
 }
 
+/// The account's menu: its name and plan, Settings, the shortcuts and
+/// Sign out, opened from its avatar.
+pub(super) fn account_menu(app: &mut App, response: &egui::Response, align: egui::RectAlign) {
+    let palette = app.palette;
+    let locale = app.locale;
+    let name = app
+        .user
+        .as_ref()
+        .map(|user| user.name().to_string())
+        .unwrap_or_default();
+    egui::Popup::menu(response)
+        .frame(super::widgets::menu_frame(&palette))
+        .align(align)
+        .show(|ui| {
+            ui.set_width(200.0);
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                theme::text(ui, &name, theme::semibold(14.0), palette.text);
+            });
+            if let Some(product) = app.user.as_ref().and_then(|user| user.product.clone()) {
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    theme::text(
+                        ui,
+                        capitalize(&product),
+                        theme::regular(12.0),
+                        palette.secondary,
+                    );
+                });
+            }
+            super::widgets::menu_separator(ui, &palette);
+            if super::widgets::menu_item(
+                ui,
+                &palette,
+                Some(Icon::Settings),
+                &gettext(locale, "Settings"),
+            ) {
+                app.actions.push(Action::Open(Page::Settings));
+            }
+            if super::widgets::menu_item(
+                ui,
+                &palette,
+                Some(Icon::Info),
+                &gettext(locale, "Keyboard shortcuts"),
+            ) {
+                app.actions
+                    .push(Action::ShowDialog(crate::model::Dialog::Shortcuts));
+            }
+            super::widgets::menu_separator(ui, &palette);
+            if super::widgets::menu_item(
+                ui,
+                &palette,
+                Some(Icon::LogOut),
+                &gettext(locale, "Sign out"),
+            ) {
+                app.actions.push(Action::SignOut);
+            }
+        });
+}
+
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let locale = app.locale;
@@ -219,8 +285,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     );
     // Where the titlebar used to be: the bar grows upwards into that space and
     // its empty parts drag the window.
-    let inset = theme::titlebar_inset(ui.ctx());
-    let content_height = theme::TOP_BAR_HEIGHT + inset;
+    let content_height = theme::toolbar_height(ui.ctx());
+    // Music's traffic lights share the toolbar's band, so with the sidebar
+    // away the toolbar starts past them.
+    let past_window_buttons = theme::apple_layout()
+        && !app.settings.sidebar_visible
+        && theme::titlebar_inset(ui.ctx()) > 0.0;
     if crate::window::custom_titlebar() {
         super::titlebar_drag(
             ui,
@@ -236,6 +306,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         Layout::left_to_right(Align::Center),
         |ui| {
             ui.add_space(super::widgets::PAGE_PADDING);
+            if past_window_buttons {
+                ui.add_space(WINDOW_BUTTONS_WIDTH);
+            }
             ui.spacing_mut().item_spacing.x = ITEM_SPACING;
             if !app.settings.sidebar_visible {
                 if nav_button(
@@ -316,158 +389,42 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.ctx().data_mut(|data| data.insert_temp(lead_id(), lead));
             let fit = topbar_fit(search_room, controls, badges(true), badges(false));
             let search_width = fit.search;
-            let id = egui::Id::new("global-search");
-            let before = app.search.query.clone();
-            let response = super::widgets::search_field(
-                ui,
-                &palette,
-                app.locale,
-                id,
-                &mut app.search.query,
-                &gettext(locale, "What do you want to play?"),
-                search_width,
-            );
-            if app.search.focus_requested {
-                app.search.focus_requested = false;
-                response.request_focus();
-            }
-            // Clear empties the field and hands it focus in the same frame.
-            // Neither should leave the page: only typing a query does.
-            let cleared = app.search.query.is_empty() && !before.is_empty();
-            if response.gained_focus() && !cleared && !matches!(app.page(), Page::Search) {
-                app.actions.push(Action::Open(Page::Search));
-            }
-            if app.search.query != before {
-                app.search.typed_at = Some(std::time::Instant::now());
-                if !cleared && !matches!(app.page(), Page::Search) {
-                    app.actions.push(Action::Open(Page::Search));
-                }
-            }
-            if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                let query = app.search.query.clone();
-                app.actions.push(Action::Search(query));
-            }
-            if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
-                response.surrender_focus();
+            let apple = theme::apple_layout();
+            if !apple {
+                search_box(app, ui, search_width);
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(window_controls.topbar_width);
                 ui.add_space(super::widgets::PAGE_PADDING);
-                // Account.
-                let (name, avatar) = app
-                    .user
-                    .as_ref()
-                    .map(|user| {
-                        (
-                            user.name().to_string(),
-                            pick_image(&user.images, 64).map(str::to_string),
-                        )
-                    })
-                    .unwrap_or_default();
-                let (rect, response) =
-                    ui.allocate_exact_size(Vec2::splat(AVATAR_SIZE), Sense::click());
-                if ui.is_rect_visible(rect) {
-                    let fill = if response.hovered() {
-                        palette.surface_hover
-                    } else {
-                        palette.surface
-                    };
-                    ui.painter().circle_filled(rect.center(), 18.0, fill);
-                    let inner = egui::Rect::from_center_size(rect.center(), Vec2::splat(28.0));
-                    match avatar.as_deref() {
-                        Some(url) => super::widgets::paint_cover(
-                            ui,
-                            &palette,
-                            Some(url),
-                            inner,
-                            14.0,
-                            Icon::User,
-                            Some(app.backend.art()),
-                        ),
-                        None => {
-                            let initial = name
-                                .chars()
-                                .next()
-                                .unwrap_or('?')
-                                .to_uppercase()
-                                .to_string();
-                            ui.painter()
-                                .circle_filled(inner.center(), 14.0, palette.accent);
-                            ui.painter().text(
-                                inner.center(),
-                                egui::Align2::CENTER_CENTER,
-                                initial,
-                                theme::bold(13.0),
-                                palette.on_accent,
-                            );
-                        }
+                if apple {
+                    // Music keeps the account at the foot of the sidebar,
+                    // and search at the toolbar's end.
+                    search_box(app, ui, APPLE_SEARCH_WIDTH.min(fit.search.max(SEARCH_MIN)));
+                } else {
+                    let (rect, response) =
+                        ui.allocate_exact_size(Vec2::splat(AVATAR_SIZE), Sense::click());
+                    paint_avatar(app, ui, rect, &response);
+                    let name = app
+                        .user
+                        .as_ref()
+                        .map(|user| user.name().to_string())
+                        .unwrap_or_default();
+                    let response = response.on_hover_text(&name);
+                    account_menu(app, &response, egui::RectAlign::BOTTOM_END);
+                    ui.add_space(4.0);
+                    if theme::icon_button(
+                        ui,
+                        Icon::Settings,
+                        ICON_BUTTON_ICON,
+                        palette.secondary,
+                        palette.text,
+                        &gettext(locale, "Settings"),
+                    )
+                    .clicked()
+                    {
+                        app.actions.push(Action::Open(Page::Settings));
                     }
-                }
-                let response = response.on_hover_text(&name);
-                egui::Popup::menu(&response)
-                    .frame(super::widgets::menu_frame(&palette))
-                    .align(egui::RectAlign::BOTTOM_END)
-                    .show(|ui| {
-                        ui.set_width(200.0);
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.add_space(10.0);
-                            theme::text(ui, &name, theme::semibold(14.0), palette.text);
-                        });
-                        if let Some(product) =
-                            app.user.as_ref().and_then(|user| user.product.clone())
-                        {
-                            ui.horizontal(|ui| {
-                                ui.add_space(10.0);
-                                theme::text(
-                                    ui,
-                                    capitalize(&product),
-                                    theme::regular(12.0),
-                                    palette.secondary,
-                                );
-                            });
-                        }
-                        super::widgets::menu_separator(ui, &palette);
-                        if super::widgets::menu_item(
-                            ui,
-                            &palette,
-                            Some(Icon::Settings),
-                            &gettext(locale, "Settings"),
-                        ) {
-                            app.actions.push(Action::Open(Page::Settings));
-                        }
-                        if super::widgets::menu_item(
-                            ui,
-                            &palette,
-                            Some(Icon::Info),
-                            &gettext(locale, "Keyboard shortcuts"),
-                        ) {
-                            app.actions
-                                .push(Action::ShowDialog(crate::model::Dialog::Shortcuts));
-                        }
-                        super::widgets::menu_separator(ui, &palette);
-                        if super::widgets::menu_item(
-                            ui,
-                            &palette,
-                            Some(Icon::LogOut),
-                            &gettext(locale, "Sign out"),
-                        ) {
-                            app.actions.push(Action::SignOut);
-                        }
-                    });
-                ui.add_space(4.0);
-                if theme::icon_button(
-                    ui,
-                    Icon::Settings,
-                    ICON_BUTTON_ICON,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(locale, "Settings"),
-                )
-                .clicked()
-                {
-                    app.actions.push(Action::Open(Page::Settings));
                 }
                 // Where playback is.
                 if let Some(galley) = device_galley {
@@ -494,6 +451,106 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
         },
     );
+}
+
+/// The search field, which opens the Search page as soon as it is used.
+fn search_box(app: &mut App, ui: &mut egui::Ui, width: f32) {
+    let palette = app.palette;
+    let locale = app.locale;
+    let id = egui::Id::new("global-search");
+    let before = app.search.query.clone();
+    let response = super::widgets::search_field(
+        ui,
+        &palette,
+        app.locale,
+        id,
+        &mut app.search.query,
+        &if theme::apple_layout() {
+            gettext(locale, "Search")
+        } else {
+            gettext(locale, "What do you want to play?")
+        },
+        width,
+    );
+    if app.search.focus_requested {
+        app.search.focus_requested = false;
+        response.request_focus();
+    }
+    // Clear empties the field and hands it focus in the same frame.
+    // Neither should leave the page: only typing a query does.
+    let cleared = app.search.query.is_empty() && !before.is_empty();
+    if response.gained_focus() && !cleared && !matches!(app.page(), Page::Search) {
+        app.actions.push(Action::Open(Page::Search));
+    }
+    if app.search.query != before {
+        app.search.typed_at = Some(std::time::Instant::now());
+        if !cleared && !matches!(app.page(), Page::Search) {
+            app.actions.push(Action::Open(Page::Search));
+        }
+    }
+    if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+        let query = app.search.query.clone();
+        app.actions.push(Action::Search(query));
+    }
+    if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        response.surrender_focus();
+    }
+}
+
+/// The account's avatar, or its initial on the accent, on a disc that
+/// lifts under the pointer.
+pub(super) fn paint_avatar(app: &App, ui: &egui::Ui, rect: egui::Rect, response: &egui::Response) {
+    let palette = app.palette;
+    let (name, avatar) = app
+        .user
+        .as_ref()
+        .map(|user| {
+            (
+                user.name().to_string(),
+                pick_image(&user.images, 64).map(str::to_string),
+            )
+        })
+        .unwrap_or_default();
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let side = rect.width().min(rect.height());
+    let fill = if response.hovered() {
+        palette.surface_hover
+    } else {
+        palette.surface
+    };
+    ui.painter().circle_filled(rect.center(), side / 2.0, fill);
+    let inner = side * 28.0 / 36.0;
+    let inner = egui::Rect::from_center_size(rect.center(), Vec2::splat(inner));
+    match avatar.as_deref() {
+        Some(url) => super::widgets::paint_cover(
+            ui,
+            &palette,
+            Some(url),
+            inner,
+            inner.width() / 2.0,
+            Icon::User,
+            Some(app.backend.art()),
+        ),
+        None => {
+            let initial = name
+                .chars()
+                .next()
+                .unwrap_or('?')
+                .to_uppercase()
+                .to_string();
+            ui.painter()
+                .circle_filled(inner.center(), inner.width() / 2.0, palette.accent);
+            ui.painter().text(
+                inner.center(),
+                egui::Align2::CENTER_CENTER,
+                initial,
+                theme::bold(inner.width() * 13.0 / 28.0),
+                palette.on_accent,
+            );
+        }
+    }
 }
 
 fn capitalize(text: &str) -> String {

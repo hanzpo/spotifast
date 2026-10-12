@@ -14,7 +14,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{
     NSAutoresizingMaskOptions, NSColor, NSColorSpace, NSView, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,
+    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowButton,
+    NSWindowOrderingMode,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -150,6 +151,70 @@ pub fn show_sidebar(column: Option<Rect>, window: Color32) {
             }
         }
         glass.column.setHidden(false);
+    });
+}
+
+/// Moves the traffic lights so the close button's centre sits `center`
+/// points in from the window's top and left edges, as Music's toolbar
+/// window places them, keeping AppKit's spacing between the three.
+///
+/// AppKit lays them out afresh on resizes and fullscreen changes, so this
+/// runs every frame; it changes nothing once they are in place.
+pub fn place_window_buttons(center: f32) {
+    GLASS.with(|glass| {
+        let glass = glass.borrow();
+        let Some(glass) = glass.as_ref() else {
+            return;
+        };
+        let Some(window) = glass.content.window() else {
+            return;
+        };
+        let [Some(close), Some(minimize), Some(zoom)] = [
+            NSWindowButton::CloseButton,
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::ZoomButton,
+        ]
+        .map(|kind| window.standardWindowButton(kind)) else {
+            return;
+        };
+        // SAFETY: AppKit's own titlebar views, read and moved on the main
+        // thread that owns them.
+        let Some(titlebar) = (unsafe { close.superview() }) else {
+            return;
+        };
+        let Some(container) = (unsafe { titlebar.superview() }) else {
+            return;
+        };
+        let Some(frame_view) = (unsafe { container.superview() }) else {
+            return;
+        };
+        let center = f64::from(center);
+        let band = 2.0 * center;
+        let outer = frame_view.frame().size;
+        // The buttons' container spans the band, so the buttons can sit
+        // in its middle without being clipped.
+        let wanted = NSRect::new(
+            NSPoint::new(0.0, outer.height - band),
+            NSSize::new(outer.width, band),
+        );
+        if container.frame() != wanted {
+            container.setFrame(wanted);
+        }
+        let inner = NSRect::new(NSPoint::new(0.0, 0.0), wanted.size);
+        if titlebar.frame() != inner {
+            titlebar.setFrame(inner);
+        }
+        let size = close.frame().size;
+        let spacing = minimize.frame().origin.x - close.frame().origin.x;
+        for (index, button) in [&close, &minimize, &zoom].into_iter().enumerate() {
+            let origin = NSPoint::new(
+                center - size.width / 2.0 + index as f64 * spacing,
+                (band - size.height) / 2.0,
+            );
+            if button.frame().origin != origin {
+                button.setFrameOrigin(origin);
+            }
+        }
     });
 }
 

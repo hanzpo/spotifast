@@ -33,6 +33,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let ctx = &ctx;
     keys::handle(app, ctx);
+    // Music's traffic lights: in from the corner, centred in its toolbar.
+    #[cfg(target_os = "macos")]
+    if theme::apple_layout() && theme::titlebar_inset(ctx) > 0.0 {
+        crate::mac_glass::place_window_buttons(theme::APPLE_TOOLBAR_HEIGHT / 2.0);
+    }
     let signed_in = app.is_connected() && app.user.is_some();
     let connecting = matches!(app.auth, AuthStatus::Connecting | AuthStatus::Starting)
         || (app.is_connected() && app.user.is_none());
@@ -51,10 +56,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui,
             Rect::from_min_size(
                 ui.max_rect().min,
-                vec2(
-                    ui.max_rect().width(),
-                    theme::TOP_BAR_HEIGHT + theme::titlebar_inset(ui.ctx()),
-                ),
+                vec2(ui.max_rect().width(), theme::toolbar_height(ui.ctx())),
             ),
         );
     }

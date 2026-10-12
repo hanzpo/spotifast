@@ -2101,6 +2101,66 @@ mod tests {
         app.backend.shutdown();
     }
 
+    /// macOS draws Apple Music's layout: the library's shelves are rows of
+    /// a source list beside the playlists, with no shelf chips or grid,
+    /// and a playlist's Play and Shuffle sit beside its cover.
+    #[test]
+    fn the_apple_layout_is_a_source_list_with_actions_beside_the_cover() {
+        use egui::accesskit::{Action as AccessibleAction, Role};
+        crate::theme::APPLE_LAYOUT.with(|apple| apple.set(true));
+        let (ctx, mut app) = accessible_app("apple-layout");
+        app.open(Page::Playlist("pl1".into()));
+        accessible_frame(&ctx, &mut app, vec![]);
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        let button = |label: &str| {
+            tree.nodes
+                .iter()
+                .any(|(_, node)| node.role() == Role::Button && node.label() == Some(label))
+        };
+        for label in [
+            "Search",
+            "Home",
+            "Liked Songs",
+            "Albums",
+            "Artists",
+            "Podcasts",
+            "Discover Weekly",
+            "Create a playlist",
+            "Shuffle",
+        ] {
+            assert!(button(label), "{label}");
+        }
+        for label in ["Show as grid", "Search Your Library", "Playlists"] {
+            assert!(!button(label), "{label}");
+        }
+        let cover_bottom = tree
+            .nodes
+            .iter()
+            .find(|(_, node)| node.role() == Role::Button && node.label() == Some("Shuffle"))
+            .and_then(|(_, node)| node.bounds())
+            .expect("Shuffle has bounds");
+        let title = tree
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Title"))
+            .and_then(|(_, node)| node.bounds());
+        if let Some(title) = title {
+            assert!(
+                cover_bottom.y1 < title.y0,
+                "the actions sit above the table"
+            );
+        }
+        let albums = accessible_node(&tree, "Albums", Role::Button);
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![accessible_action(albums, AccessibleAction::Click, None)],
+        );
+        assert_eq!(app.page(), &Page::Albums);
+        app.backend.shutdown();
+        crate::theme::APPLE_LAYOUT.with(|apple| apple.set(false));
+    }
+
     #[test]
     fn library_grid_toggle_is_accessible_and_persistent() {
         use egui::accesskit::{Action as AccessibleAction, Role};

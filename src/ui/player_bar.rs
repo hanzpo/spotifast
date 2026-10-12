@@ -27,6 +27,15 @@ pub const MARGIN: f32 = 12.0;
 const RADIUS: u8 = 22;
 /// How opaque the capsule's glass is over the page scrolling beneath it.
 const GLASS_ALPHA: u8 = 238;
+/// Music's capsule: its height, and the most width it takes.
+const APPLE_HEIGHT: f32 = 56.0;
+const APPLE_MAX_WIDTH: f32 = 960.0;
+/// The transport at the capsule's start: Shuffle, Previous, Play, Next
+/// and Repeat, and the gap between them.
+const APPLE_TRANSPORT: [f32; 5] = [28.0, 32.0, 36.0, 32.0, 28.0];
+const APPLE_TRANSPORT_GAP: f32 = 2.0;
+/// The controls at the capsule's end: the volume slider and four buttons.
+const APPLE_EXTRAS_WIDTH: f32 = 92.0 + 4.0 * 30.0 + 4.0 * 6.0 + 4.0;
 
 /// The room a page leaves at its foot so its last rows can scroll clear of
 /// the capsule.
@@ -40,13 +49,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
     let fill = eased_fill(ui.ctx(), palette.panel, app.now_playing_tint());
     let [r, g, b, _] = fill.to_srgba_unmultiplied();
     let glass = Color32::from_rgba_unmultiplied(r, g, b, GLASS_ALPHA);
-    let capsule = Rect::from_min_max(
-        pos2(
-            page.left() + MARGIN,
-            page.bottom() - MARGIN - theme::PLAYER_BAR_HEIGHT,
-        ),
-        pos2(page.right() - MARGIN, page.bottom() - MARGIN),
-    );
+    let apple = theme::apple_layout();
+    let capsule = if apple {
+        // Music's player: a slimmer capsule centred under the page.
+        let width = (page.width() - 2.0 * MARGIN).min(APPLE_MAX_WIDTH);
+        Rect::from_center_size(
+            pos2(page.center().x, page.bottom() - MARGIN - APPLE_HEIGHT / 2.0),
+            vec2(width, APPLE_HEIGHT),
+        )
+    } else {
+        Rect::from_min_max(
+            pos2(
+                page.left() + MARGIN,
+                page.bottom() - MARGIN - theme::PLAYER_BAR_HEIGHT,
+            ),
+            pos2(page.right() - MARGIN, page.bottom() - MARGIN),
+        )
+    };
     egui::Area::new(egui::Id::new("player-bar"))
         .fixed_pos(capsule.min)
         .order(egui::Order::Middle)
@@ -55,7 +74,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
             // The capsule takes its own clicks, so none reach the page.
             ui.allocate_rect(capsule, Sense::click());
             let painter = ui.painter();
-            let radius = egui::CornerRadius::same(RADIUS);
+            let radius = egui::CornerRadius::same(if apple {
+                (APPLE_HEIGHT / 2.0) as u8
+            } else {
+                RADIUS
+            });
             painter.add(
                 egui::epaint::Shadow {
                     offset: [0, 10],
@@ -87,10 +110,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
             );
             let mut inside = ui.new_child(
                 UiBuilder::new()
-                    .max_rect(capsule.shrink2(vec2(14.0, 0.0)))
+                    .max_rect(capsule.shrink2(vec2(if apple { 18.0 } else { 14.0 }, 0.0)))
                     .layout(Layout::left_to_right(Align::Center)),
             );
-            contents(app, &mut inside);
+            if apple {
+                apple_contents(app, &mut inside);
+            } else {
+                contents(app, &mut inside);
+            }
         });
 }
 
@@ -567,6 +594,417 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         theme::regular(11.5),
         time_color,
     );
+}
+
+/// Music's capsule: the transport at its start, the playing song in a
+/// display at its centre, and the panels and volume at its end.
+fn apple_contents(app: &mut App, ui: &mut egui::Ui) {
+    let rect = ui.max_rect();
+    let now = app.now_playing();
+    let transport_width = APPLE_TRANSPORT.iter().sum::<f32>() + APPLE_TRANSPORT_GAP * 4.0;
+    let transport_rect = Rect::from_min_size(rect.min, vec2(transport_width, rect.height()));
+    apple_transport(app, ui, now.as_ref(), transport_rect);
+
+    let extras_width = APPLE_EXTRAS_WIDTH.min(rect.width() * 0.3);
+    let right_band = Rect::from_min_size(
+        pos2(rect.right() - extras_width, rect.center().y - 15.0),
+        vec2(extras_width, 30.0),
+    );
+    let mut right_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(right_band)
+            .layout(Layout::right_to_left(Align::Center)),
+    );
+    extras(app, &mut right_ui, now.as_ref());
+
+    let display = Rect::from_min_max(
+        pos2(transport_rect.right() + 14.0, rect.top() + 6.0),
+        pos2(right_band.left() - 14.0, rect.bottom() - 6.0),
+    );
+    if display.width() > 120.0 {
+        apple_display(app, ui, display, now.as_ref());
+    }
+}
+
+/// Music's transport: bare glyphs, Play the largest, with no disc.
+fn apple_transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region: Rect) {
+    let palette = app.palette;
+    let enabled = now.is_some_and(|now| now.can_control) || app.is_connected();
+    let playing = now.is_some_and(|now| now.playing);
+    let loading = now.is_some_and(|now| now.loading);
+    let shuffle = now.map_or_else(|| app.playing_context_shuffle(), |now| now.shuffle);
+    let repeat = now.map(|now| now.repeat).unwrap_or_default();
+    let main = if enabled { palette.text } else { palette.dim };
+    let side = if enabled {
+        palette.secondary
+    } else {
+        palette.dim
+    };
+    let mut x = region.left();
+    let cy = region.center().y;
+    let mut cells = APPLE_TRANSPORT.iter().map(|width| {
+        let cell = Rect::from_center_size(pos2(x + width / 2.0, cy), vec2(*width, 36.0));
+        x += width + APPLE_TRANSPORT_GAP;
+        cell
+    });
+    let mut cell = |ui: &mut egui::Ui| {
+        let rect = cells.next().unwrap_or(Rect::NOTHING);
+        ui.new_child(
+            UiBuilder::new()
+                .max_rect(rect)
+                .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
+        )
+    };
+
+    let mut shuffle_cell = cell(ui);
+    let shuffle_button = theme::icon_button(
+        &mut shuffle_cell,
+        Icon::Shuffle,
+        15.0,
+        if shuffle { palette.accent } else { side },
+        if shuffle {
+            palette.accent_hover
+        } else {
+            palette.text
+        },
+        &gettext(app.locale, "Shuffle"),
+    );
+    shuffle_button.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Checkbox,
+            shuffle_cell.is_enabled(),
+            shuffle,
+            gettext(app.locale, "Shuffle"),
+        )
+    });
+    if shuffle_button.clicked() {
+        app.actions.push(Action::ToggleShuffle);
+    }
+    if theme::icon_button(
+        &mut cell(ui),
+        Icon::SkipBackFilled,
+        18.0,
+        main,
+        palette.text,
+        &gettext(app.locale, "Previous"),
+    )
+    .clicked()
+    {
+        app.actions.push(Action::Previous);
+    }
+    let mut play_cell = cell(ui);
+    if loading || app.any_play_pending() {
+        theme::spinner(&mut play_cell, 20.0, palette.text);
+    } else if theme::icon_button(
+        &mut play_cell,
+        if playing {
+            Icon::PauseFilled
+        } else {
+            Icon::PlayFilled
+        },
+        22.0,
+        main,
+        palette.text,
+        &if playing {
+            gettext(app.locale, "Pause")
+        } else {
+            gettext(app.locale, "Play")
+        },
+    )
+    .clicked()
+    {
+        app.actions.push(Action::TogglePlay);
+    }
+    if theme::icon_button(
+        &mut cell(ui),
+        Icon::SkipForwardFilled,
+        18.0,
+        main,
+        palette.text,
+        &gettext(app.locale, "Next"),
+    )
+    .clicked()
+    {
+        app.actions.push(Action::Next);
+    }
+    let (repeat_icon, repeat_color, tooltip) = match repeat {
+        RepeatMode::Off => (Icon::Repeat, side, gettext(app.locale, "Repeat")),
+        RepeatMode::Context => (
+            Icon::Repeat,
+            palette.accent,
+            gettext(app.locale, "Repeat one"),
+        ),
+        RepeatMode::Track => (
+            Icon::Repeat1,
+            palette.accent,
+            gettext(app.locale, "Repeat off"),
+        ),
+    };
+    if theme::icon_button(
+        &mut cell(ui),
+        repeat_icon,
+        15.0,
+        repeat_color,
+        if repeat == RepeatMode::Off {
+            palette.text
+        } else {
+            palette.accent_hover
+        },
+        &tooltip,
+    )
+    .clicked()
+    {
+        app.actions.push(Action::CycleRepeat);
+    }
+}
+
+/// Music's display: the cover at its start, the song and its artists
+/// centred, the position along its foot, and the heart at its end.
+fn apple_display(app: &mut App, ui: &mut egui::Ui, display: Rect, now: Option<&NowPlaying>) {
+    let palette = app.palette;
+    let radius = egui::CornerRadius::same(8);
+    ui.painter().rect_filled(
+        display,
+        radius,
+        if palette.dark {
+            Color32::from_white_alpha(10)
+        } else {
+            Color32::from_black_alpha(7)
+        },
+    );
+    let cover_rect = Rect::from_min_size(
+        display.min + vec2(4.0, 4.0),
+        Vec2::splat(display.height() - 8.0),
+    );
+    let Some(now) = now else {
+        super::widgets::paint_cover(ui, &palette, None, cover_rect, 5.0, Icon::Music, None);
+        ui.painter().text(
+            pos2(
+                (cover_rect.right() + display.right()) / 2.0,
+                display.center().y,
+            ),
+            egui::Align2::CENTER_CENTER,
+            gettext(app.locale, "Nothing playing"),
+            theme::medium(12.5),
+            palette.secondary,
+        );
+        return;
+    };
+    super::widgets::paint_cover(
+        ui,
+        &palette,
+        now.art_small.as_deref().or(now.art_url.as_deref()),
+        cover_rect,
+        5.0,
+        Icon::Music,
+        Some(app.backend.art()),
+    );
+    let song = app.now_playing_item();
+    let drag_sense = if song.is_some() {
+        Sense::click_and_drag()
+    } else {
+        Sense::click()
+    };
+    let open_source = |app: &mut App| {
+        if let Some(id) = &now.album_id {
+            app.actions.push(Action::Open(Page::Album(id.clone())));
+        } else if let Some(id) = &now.show_id {
+            app.actions.push(Action::Open(Page::Show(id.clone())));
+        }
+    };
+    let cover_response = ui.interact(cover_rect, egui::Id::new("now-playing-cover"), drag_sense);
+    if cover_response.clicked() {
+        open_source(app);
+    }
+
+    let heart_room = if now.is_episode { 8.0 } else { 34.0 };
+    let words = Rect::from_min_max(
+        pos2(cover_rect.right() + 10.0, display.top()),
+        pos2(display.right() - heart_room, display.bottom()),
+    );
+    let info_response = ui.interact(words, egui::Id::new("now-playing-info"), drag_sense);
+    let hovered = ui.rect_contains_pointer(display);
+
+    // The title, centred, and beneath it the artists or the show.
+    let title_font = theme::medium(12.5);
+    let title_width = ui
+        .painter()
+        .layout_no_wrap(now.title.clone(), title_font.clone(), palette.text)
+        .size()
+        .x
+        .min(words.width());
+    let title_rect = Rect::from_center_size(
+        pos2(words.center().x, display.top() + 11.0),
+        vec2(title_width, 16.0),
+    );
+    let mut title_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(title_rect)
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    title_ui.set_clip_rect(words.intersect(ui.clip_rect()));
+    let title_response = theme::link(&mut title_ui, &now.title, title_font, palette.text);
+    if title_response.clicked() {
+        open_source(app);
+    }
+    let subtitle_font = theme::regular(11.5);
+    let subtitle_width = ui
+        .painter()
+        .layout_no_wrap(
+            now.subtitle.clone(),
+            subtitle_font.clone(),
+            palette.secondary,
+        )
+        .size()
+        .x
+        .min(words.width() - 90.0)
+        .max(20.0);
+    let subtitle_rect = Rect::from_center_size(
+        pos2(words.center().x, display.top() + 24.0),
+        vec2(subtitle_width, 15.0),
+    );
+    let mut subtitle_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(subtitle_rect)
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    subtitle_ui.set_clip_rect(subtitle_rect.intersect(ui.clip_rect()));
+    if now.artists.is_empty() {
+        if theme::link(
+            &mut subtitle_ui,
+            &now.subtitle,
+            subtitle_font,
+            palette.secondary,
+        )
+        .clicked()
+            && let Some(id) = &now.show_id
+        {
+            app.actions.push(Action::Open(Page::Show(id.clone())));
+        }
+    } else {
+        super::widgets::artist_links(
+            &mut subtitle_ui,
+            app,
+            &now.artists,
+            subtitle_font,
+            palette.secondary,
+        );
+    }
+
+    // The position, a thin line along the display's foot that seeks.
+    let (position, duration) = (now.position_ms, now.duration_ms);
+    let shown_position = match app.seek_preview {
+        Some(fraction) => (fraction * duration as f32) as u32,
+        None => position,
+    };
+    let bar_width = (words.width() - 16.0).max(20.0);
+    let bar_rect = Rect::from_center_size(
+        pos2(words.center().x, display.bottom() - 7.0),
+        vec2(bar_width, 12.0),
+    );
+    let mut bar_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(bar_rect)
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    let fraction = if duration > 0 {
+        position as f32 / duration as f32
+    } else {
+        0.0
+    };
+    match thin_slider(
+        &mut bar_ui,
+        &palette,
+        egui::Id::new("seek-slider"),
+        &gettext(app.locale, "Playback position (%)"),
+        fraction,
+        bar_width,
+        None,
+    ) {
+        SliderEvent::Dragging(value) => app.seek_preview = Some(value),
+        SliderEvent::Committed(value) => {
+            app.seek_preview = None;
+            if duration > 0 {
+                app.actions
+                    .push(Action::Seek((value * duration as f32) as u32));
+            }
+        }
+        SliderEvent::None => {}
+    }
+    // The times show while the pointer is over the display, as in Music.
+    if hovered || app.seek_preview.is_some() {
+        let y = display.top() + 24.0;
+        ui.painter().text(
+            pos2(bar_rect.left(), y),
+            egui::Align2::LEFT_CENTER,
+            util::format_duration_ms(shown_position),
+            theme::regular(10.5),
+            palette.secondary,
+        );
+        ui.painter().text(
+            pos2(bar_rect.right(), y),
+            egui::Align2::RIGHT_CENTER,
+            format!(
+                "-{}",
+                util::format_duration_ms(duration.saturating_sub(shown_position))
+            ),
+            theme::regular(10.5),
+            palette.secondary,
+        );
+    }
+
+    if (cover_response.drag_started_by(egui::PointerButton::Primary)
+        || info_response.drag_started_by(egui::PointerButton::Primary))
+        && let Some(item) = &song
+    {
+        egui::DragAndDrop::set_payload(
+            ui.ctx(),
+            DragTrack {
+                title: item.name().to_string(),
+                image: item.image(64).map(str::to_string),
+                items: vec![item.clone()],
+                from: None,
+                source_playlist: None,
+            },
+        );
+    }
+    if let Some(item) = song {
+        let context = app.editable_context_playlist();
+        for response in [&cover_response, &info_response, &title_response] {
+            egui::Popup::context_menu(response)
+                .frame(super::widgets::menu_frame(&palette))
+                .show(|ui| super::widgets::item_menu(ui, app, &item, context.as_ref(), None));
+        }
+    }
+
+    if !now.is_episode {
+        let saved = app.is_saved(&now.uri).unwrap_or(false);
+        let (icon, color, tooltip) = if saved {
+            (
+                Icon::HeartFilled,
+                palette.accent,
+                gettext(app.locale, "Remove from Liked Songs"),
+            )
+        } else {
+            (
+                Icon::Heart,
+                palette.secondary,
+                gettext(app.locale, "Save to Liked Songs"),
+            )
+        };
+        let heart_rect = Rect::from_center_size(
+            pos2(display.right() - 18.0, display.top() + 18.0),
+            Vec2::splat(28.0),
+        );
+        let mut heart_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(heart_rect)
+                .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
+        );
+        if theme::icon_button(&mut heart_ui, icon, 14.0, color, palette.text, &tooltip).clicked() {
+            app.actions.push(Action::ToggleSaved(now.uri.clone()));
+        }
+    }
 }
 
 fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {

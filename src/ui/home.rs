@@ -15,11 +15,23 @@ use super::widgets::{self, TrackRow};
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     ui.add_space(6.0);
-    let greeting = crate::util::greeting(app.locale);
-    theme::text(ui, greeting.as_ref(), theme::bold(30.0), palette.text);
-    ui.add_space(12.0);
-    quick_access(app, ui);
-    ui.add_space(16.0);
+    if theme::apple_layout() {
+        // Music titles the page and goes straight to its shelves; the
+        // playlists the tiles would repeat are in the sidebar.
+        theme::text(
+            ui,
+            gettext(app.locale, "Home"),
+            theme::bold(28.0),
+            palette.text,
+        );
+        ui.add_space(16.0);
+    } else {
+        let greeting = crate::util::greeting(app.locale);
+        theme::text(ui, greeting.as_ref(), theme::bold(30.0), palette.text);
+        ui.add_space(12.0);
+        quick_access(app, ui);
+        ui.add_space(16.0);
+    }
 
     if app.settings.home.made_for_you.visible {
         made_for_you(app, ui);

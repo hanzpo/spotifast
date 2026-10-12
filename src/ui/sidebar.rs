@@ -11,6 +11,10 @@ use crate::theme::{self, Icon, Palette};
 
 const DEFAULT_ROW_HEIGHT: f32 = 52.0;
 const COMPACT_ROW_HEIGHT: f32 = 32.0;
+/// A row of Music's source list.
+const SOURCE_ROW_HEIGHT: f32 = 30.0;
+/// The account's row at the foot of Music's sidebar.
+const ACCOUNT_FOOTER_HEIGHT: f32 = 44.0;
 
 struct Entry {
     image: Option<String>,
@@ -501,10 +505,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Rect> {
     let glass = cfg!(target_os = "macos");
     let inset = if glass { GLASS_INSET as i8 } else { 0 };
     let expanded_art = has_expanded_art(app);
-    let floating_art = app.settings.sidebar_grid && expanded_art;
+    let floating_art = app.settings.sidebar_grid && expanded_art && !theme::apple_layout();
     // The traffic lights float over the top-left of the sidebar now, so the
     // first nav row has to start below them.
-    let top = 12 + theme::titlebar_inset(ui.ctx()) as i8;
+    let top = if theme::apple_layout() && theme::titlebar_inset(ui.ctx()) > 0.0 {
+        // Below Music's traffic lights, which sit lower and further in.
+        theme::APPLE_TOOLBAR_HEIGHT as i8 + 2
+    } else {
+        12 + theme::titlebar_inset(ui.ctx()) as i8
+    };
     let beside = if app.show_queue_panel || app.show_lyrics_panel {
         theme::SIDE_PANEL_MIN_WIDTH
     } else {
@@ -537,8 +546,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) -> Option<Rect> {
                     bottom: if expanded_art { inset } else { 8 + inset },
                 }),
         );
+    let apple = theme::apple_layout();
     let response = panel.show(ui, |ui| {
-        let art_rect = expanded_art.then(|| expanded_art_rect(ui));
+        if apple {
+            account_footer(app, ui);
+        }
+        let lift = if apple { ACCOUNT_FOOTER_HEIGHT } else { 0.0 };
+        let art_rect = expanded_art.then(|| expanded_art_rect(ui).translate(vec2(0.0, -lift)));
         if let Some(rect) = art_rect.filter(|_| !floating_art) {
             reserve_expanded_art(ui, rect);
         }
@@ -875,7 +889,165 @@ fn nav_row(
     response
 }
 
-fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
+/// Music's sidebar head: Search and Home, then the Library's shelves as
+/// rows of their own and the heading over the playlists.
+fn source_list_head(app: &mut App, ui: &mut egui::Ui) {
+    let palette = app.palette;
+    let page = app.page().clone();
+    let locale = app.locale;
+    ui.add_space(4.0);
+    if nav_row(
+        ui,
+        &palette,
+        Icon::Search,
+        &gettext(locale, "Search"),
+        page == Page::Search,
+    )
+    .clicked()
+    {
+        app.actions.push(Action::FocusSearch);
+    }
+    if nav_row(
+        ui,
+        &palette,
+        Icon::House,
+        &gettext(locale, "Home"),
+        page == Page::Home,
+    )
+    .clicked()
+    {
+        app.actions.push(Action::Open(Page::Home));
+    }
+    section_heading(ui, &palette, &gettext(locale, "Library"));
+    let liked = liked_entry(app);
+    let response = nav_row(
+        ui,
+        &palette,
+        Icon::Heart,
+        &liked.name,
+        page == Page::LikedSongs,
+    );
+    // Songs still drop on Liked Songs, as they did on its library row.
+    if egui::DragAndDrop::has_payload_of_type::<DragTrack>(ui.ctx()) && response.contains_pointer()
+    {
+        ui.painter().rect_stroke(
+            response.rect,
+            CornerRadius::same(7),
+            egui::Stroke::new(1.5, palette.accent),
+            egui::StrokeKind::Inside,
+        );
+    }
+    finish_entry_interaction(app, ui, &response, &liked, false, false, true);
+    for (icon, label, shelf) in [
+        (Icon::Disc, gettext(locale, "Albums"), Page::Albums),
+        (Icon::Mic, gettext(locale, "Artists"), Page::Artists),
+        (Icon::Radio, gettext(locale, "Podcasts"), Page::Podcasts),
+    ] {
+        let active = page == shelf || (shelf == Page::Podcasts && page == Page::Episodes);
+        if nav_row(ui, &palette, icon, &label, active).clicked() {
+            app.actions.push(Action::Open(shelf));
+        }
+    }
+    let heading = section_heading(ui, &palette, &gettext(locale, "Playlists"));
+    let plus = Rect::from_center_size(
+        // Kept inside the heading's row: anything past the panel's edge
+        // would widen the panel a little every frame.
+        pos2(heading.right() - 16.0, heading.center().y),
+        Vec2::splat(26.0),
+    );
+    if ui
+        .put(plus, |ui: &mut egui::Ui| {
+            theme::icon_button(
+                ui,
+                Icon::Plus,
+                14.0,
+                palette.secondary,
+                palette.text,
+                &gettext(locale, "Create a playlist"),
+            )
+        })
+        .clicked()
+    {
+        app.actions.push(Action::ShowDialog(Dialog::CreatePlaylist {
+            name: String::new(),
+            public: false,
+            add_uris: Vec::new(),
+        }));
+    }
+    ui.add_space(2.0);
+}
+
+/// A source list's group heading: small, bold and grey, set in from the
+/// rows' edge.
+fn section_heading(ui: &mut egui::Ui, palette: &Palette, label: &str) -> Rect {
+    ui.add_space(12.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::hover());
+    let painter = ui.painter().with_clip_rect(rect);
+    crate::bidi::paint_line(
+        &painter,
+        rect.left() + 10.0,
+        rect.right() - 28.0,
+        rect.center().y,
+        label,
+        theme::semibold(11.0),
+        palette.secondary,
+    );
+    ui.add_space(2.0);
+    rect
+}
+
+/// Music's foot of the sidebar: the account's avatar and name, which open
+/// its menu.
+fn account_footer(app: &mut App, ui: &mut egui::Ui) {
+    egui::Panel::bottom("sidebar-account")
+        .exact_size(ACCOUNT_FOOTER_HEIGHT)
+        .resizable(false)
+        .show_separator_line(false)
+        .frame(Frame::new())
+        .show(ui, |ui| {
+            let palette = app.palette;
+            let name = app
+                .user
+                .as_ref()
+                .map(|user| user.name().to_string())
+                .unwrap_or_default();
+            let rect = Rect::from_min_size(
+                ui.max_rect().left_top(),
+                vec2(ui.max_rect().width(), ACCOUNT_FOOTER_HEIGHT - 8.0),
+            );
+            let response = ui.interact(rect, egui::Id::new("sidebar-account-row"), Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &name)
+            });
+            if response.hovered() {
+                ui.painter().rect_filled(
+                    rect,
+                    CornerRadius::same(7),
+                    theme::sidebar_hover(&palette),
+                );
+            }
+            let avatar = Rect::from_center_size(
+                pos2(rect.left() + 18.0, rect.center().y),
+                Vec2::splat(26.0),
+            );
+            super::topbar::paint_avatar(app, ui, avatar, &response);
+            let painter = ui.painter().with_clip_rect(rect.shrink(4.0));
+            crate::bidi::paint_line(
+                &painter,
+                avatar.right() + 9.0,
+                rect.right() - 8.0,
+                rect.center().y,
+                &name,
+                theme::medium(13.5),
+                palette.text,
+            );
+            theme::focus_ring(ui, &response);
+            super::topbar::account_menu(app, &response, egui::RectAlign::TOP_START);
+        });
+}
+
+/// Home, Search, and Your Library's heading, shelves, sort and search.
+fn library_head(app: &mut App, ui: &mut egui::Ui) -> (Filter, LibrarySort) {
     let palette = app.palette;
     let page = app.page().clone();
     let locale = app.locale;
@@ -1036,6 +1208,19 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
         }
     }
     ui.add_space(6.0);
+    (filter, sort)
+}
+
+fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
+    let palette = app.palette;
+    let locale = app.locale;
+    let apple = theme::apple_layout();
+    let (filter, sort) = if apple {
+        source_list_head(app, ui);
+        (Filter::Playlists, selected_sort(app, Filter::Playlists))
+    } else {
+        library_head(app, ui)
+    };
 
     // Make sure the selected shelf is loading.
     match filter {
@@ -1078,7 +1263,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     match filter {
         Filter::Playlists => {
             let liked = liked_entry(app);
-            if needle.is_empty() || liked.name.to_lowercase().contains(&needle) {
+            // Music lists its favourites under Library instead.
+            if !apple && (needle.is_empty() || liked.name.to_lowercase().contains(&needle)) {
                 entries.push(liked);
             }
             let show_folders = sort == LibrarySort::Spotify && needle.is_empty();
@@ -1255,7 +1441,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     },
                 );
             }
-            if app.settings.sidebar_grid {
+            if app.settings.sidebar_grid && !apple {
                 library_grid(
                     app,
                     ui,
@@ -1272,8 +1458,11 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 return;
             }
 
-            let compact = app.settings.sidebar_compact;
-            let row_height = if compact {
+            // Music's playlists are a source list's single lines.
+            let compact = apple || app.settings.sidebar_compact;
+            let row_height = if apple {
+                SOURCE_ROW_HEIGHT
+            } else if compact {
                 COMPACT_ROW_HEIGHT
             } else {
                 DEFAULT_ROW_HEIGHT
@@ -1302,9 +1491,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             let art = app.backend.art().clone();
             super::widgets::virtual_rows(ui, entries.len(), row_height, |ui, index| {
                 let entry = &entries[index];
-                if !app.settings.sidebar_compact
-                    && let Some(image) = &entry.image
-                {
+                if !compact && let Some(image) = &entry.image {
                     // Prepare the enlarged preview before this row is opened.
                     app.softened_covers.texture(ui.ctx(), &art, image);
                 }
@@ -1381,7 +1568,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                             egui::StrokeKind::Inside,
                         );
                     }
-                    let name_color = if playing {
+                    let name_color = if playing && !(apple && active) {
                         palette.accent
                     } else {
                         palette.text
@@ -1435,7 +1622,18 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                             );
                         }
                     } else if compact {
-                        let text_left = rect.left() + LIBRARY_ITEM_PADDING + indent;
+                        let mut text_left = rect.left() + LIBRARY_ITEM_PADDING + indent;
+                        if apple {
+                            // Placed as the navigation rows place theirs.
+                            Icon::ListMusic.image(palette.accent, 17.0).paint_at(
+                                ui,
+                                Rect::from_center_size(
+                                    pos2(rect.left() + 18.0 + indent, rect.center().y),
+                                    Vec2::splat(17.0),
+                                ),
+                            );
+                            text_left = rect.left() + 36.0 + indent;
+                        }
                         let text_right = rect.right()
                             - if playing || pinned {
                                 28.0
@@ -1452,7 +1650,11 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                             text_right,
                             rect.center().y,
                             &entry.name,
-                            theme::medium(13.5),
+                            if apple {
+                                theme::regular(13.5)
+                            } else {
+                                theme::medium(13.5)
+                            },
                             name_color,
                         );
                     } else {
