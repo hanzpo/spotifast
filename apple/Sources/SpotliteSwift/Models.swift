@@ -43,6 +43,17 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     }
 
     var isEpisode: Bool { kind == "episode" }
+
+    /// The song as the server takes it to add a row before Spotify answers.
+    var described: [String: Any] {
+        var value: [String: Any] = [
+            "uri": uri, "name": name, "duration_ms": durationMs, "explicit": explicit,
+            "artists": artists.map { ["id": $0.id ?? "", "name": $0.name] },
+        ]
+        if let album { value["album"] = ["id": album.id ?? "", "name": album.name ?? ""] }
+        if let image { value["image"] = image }
+        return value
+    }
     var artistNames: String {
         isEpisode ? (subtitle ?? "") : artists.map(\.name).joined(separator: ", ")
     }

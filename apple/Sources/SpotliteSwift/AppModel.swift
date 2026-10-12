@@ -207,9 +207,10 @@ final class AppModel {
     func loadPlaylists() async {
         for attempt in 0..<60 {
             guard let list = try? await call("library.playlists", as: PlaylistList.self) else { return }
-            playlists = list.playlists ?? []
-            sidebarRows = list.rows ?? []
-            likedContext = list.likedContext
+            // A reload in progress or one that failed keeps the list shown.
+            if let fresh = list.playlists { playlists = fresh }
+            if let rows = list.rows { sidebarRows = rows }
+            likedContext = list.likedContext ?? likedContext
             if !list.loading { return }
             try? await Task.sleep(for: .milliseconds(attempt < 10 ? 250 : 800))
         }
@@ -422,10 +423,15 @@ final class AppModel {
     }
 
     func add(_ tracks: [Track], to playlist: Playlist) {
+        // Songs go with what the server needs to show their rows at once;
+        // episodes go by URI.
+        let songs = tracks.filter { !$0.isEpisode }.map(\.described)
+        let episodes = tracks.filter(\.isEpisode).map(\.uri)
         send(
             "playlist.add",
-            ["id": playlist.id, "uris": tracks.map(\.uri)],
+            ["id": playlist.id, "items": songs, "uris": episodes],
             done: "Added to \(playlist.name)")
+        revision += 1
     }
 
     func remove(_ tracks: [Track], from playlistID: String) {
