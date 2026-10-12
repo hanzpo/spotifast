@@ -2,8 +2,8 @@
 //!
 //! The window is transparent. Beneath winit's content view, in the window's
 //! frame view, sit two AppKit views: a plain one in the window colour that
-//! fills the sidebar's column, and on it an `NSVisualEffectView` with the
-//! sidebar material, inset and rounded the way macOS's own sidebars float.
+//! fills the sidebar's column, and on it an `NSGlassEffectView`, Liquid
+//! Glass inset and rounded the way macOS's own sidebars float.
 //! egui paints everything but the sidebar column opaque, so the material
 //! only shows there, with AppKit drawing its blur and its rounded edge.
 
@@ -13,9 +13,8 @@ use egui::{Color32, Rect};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{
-    NSAutoresizingMaskOptions, NSColor, NSColorSpace, NSView, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowButton,
-    NSWindowOrderingMode,
+    NSAutoresizingMaskOptions, NSColor, NSColorSpace, NSGlassEffectView, NSGlassEffectViewStyle,
+    NSView, NSWindowButton, NSWindowOrderingMode,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -30,7 +29,7 @@ pub const RADIUS: f32 = 14.0;
 struct Glass {
     content: Retained<NSView>,
     column: Retained<NSView>,
-    material: Retained<NSVisualEffectView>,
+    material: Retained<NSGlassEffectView>,
     shown: Option<(Rect, Color32)>,
 }
 
@@ -65,13 +64,11 @@ pub fn install(window: &impl HasWindowHandle) {
     column.setAutoresizingMask(sizing);
     column.setHidden(true);
 
-    let material = NSVisualEffectView::initWithFrame(mtm.alloc(), NSRect::ZERO);
-    material.setMaterial(NSVisualEffectMaterial::Sidebar);
-    material.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-    material.setState(NSVisualEffectState::FollowsWindowActiveState);
+    // Liquid Glass, as Music's sidebar wears it.
+    let material = NSGlassEffectView::initWithFrame(mtm.alloc(), NSRect::ZERO);
+    material.setStyle(NSGlassEffectViewStyle::Regular);
+    material.setCornerRadius(f64::from(RADIUS));
     material.setAutoresizingMask(NSAutoresizingMaskOptions::ViewHeightSizable);
-    material.setWantsLayer(true);
-    round(&material, f64::from(RADIUS));
     column.addSubview(&material);
 
     frame_view.addSubview_positioned_relativeTo(
@@ -87,19 +84,6 @@ pub fn install(window: &impl HasWindowHandle) {
             shown: None,
         });
     });
-}
-
-fn round(view: &NSView, radius: f64) {
-    // SAFETY: a layer-backed view's layer is a CALayer, which takes these.
-    unsafe {
-        let layer: Option<Retained<AnyObject>> = objc2::msg_send![view, layer];
-        if let Some(layer) = layer {
-            let () = objc2::msg_send![&*layer, setCornerRadius: radius];
-            let () = objc2::msg_send![&*layer, setMasksToBounds: true];
-            let continuous = objc2_foundation::ns_string!("continuous");
-            let () = objc2::msg_send![&*layer, setCornerCurve: continuous];
-        }
-    }
 }
 
 /// Places the glass in `column`, in window points from the top left, on a

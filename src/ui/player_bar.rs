@@ -89,7 +89,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
                 .as_shape(capsule, radius),
             );
             painter.rect_filled(capsule, radius, glass);
-            // The glass's rim, and the light catching its upper edge.
+            // The glass's rim.
             let rim = if palette.dark {
                 Color32::from_white_alpha(26)
             } else {
@@ -100,13 +100,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Rect) {
                 radius,
                 egui::Stroke::new(1.0, rim),
                 egui::StrokeKind::Inside,
-            );
-            let sheen = Rect::from_min_size(capsule.min, vec2(capsule.width(), 22.0));
-            super::widgets::paint_vertical_gradient(
-                ui,
-                sheen.shrink2(vec2(RADIUS as f32, 1.0)),
-                Color32::from_white_alpha(if palette.dark { 10 } else { 40 }),
-                Color32::TRANSPARENT,
             );
             let mut inside = ui.new_child(
                 UiBuilder::new()
