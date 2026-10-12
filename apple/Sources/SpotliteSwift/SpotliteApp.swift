@@ -5,11 +5,20 @@ import SwiftUI
 struct SpotliteApp: App {
     @State private var model = AppModel()
 
+    /// A probe run, for checking the interface: no Dock icon, never
+    /// active, and the window out of sight, so it disturbs nobody.
+    static let probing = ProcessInfo.processInfo.environment["SPOTLITE_PROBE"] != nil
+
+    @NSApplicationDelegateAdaptor private var delegate: ProbeDelegate
+
     init() {
-        // Run from a terminal by `swift run`, the process still gets a
-        // Dock icon and a window of its own.
-        NSApplication.shared.setActivationPolicy(.regular)
-        if ProcessInfo.processInfo.environment["SPOTLITE_BACKGROUND"] == nil {
+        if Self.probing {
+            NSApplication.shared.setActivationPolicy(.accessory)
+            ProbeDelegate.model = model
+        } else {
+            // Run from a terminal by `swift run`, the process still gets a
+            // Dock icon and a window of its own.
+            NSApplication.shared.setActivationPolicy(.regular)
             NSApplication.shared.activate()
         }
     }
@@ -22,6 +31,8 @@ struct SpotliteApp: App {
                 .task { await model.connect() }
         }
         .windowToolbarStyle(.unified)
+        // A probe draws into a window of its own, out of sight.
+        .defaultLaunchBehavior(Self.probing ? .suppressed : .presented)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Playlist…") { model.requestNewPlaylist() }
