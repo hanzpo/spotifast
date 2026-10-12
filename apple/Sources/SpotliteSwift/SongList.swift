@@ -75,6 +75,7 @@ struct SongList: View {
                     selected: selection.contains(track.id),
                     playing: model.player.uri == track.uri,
                     paused: model.player.playing != true,
+                    source: source,
                     play: { play(track) }
                 )
                 .contentShape(Rectangle())
@@ -200,7 +201,7 @@ struct SongHeader: View {
             if columns.contains(.date) {
                 Text("Date").frame(width: Widths.added, alignment: .leading)
             }
-            Color.clear.frame(width: Widths.heart)
+            Color.clear.frame(width: Widths.heart * 2 + 12)
             heading("Time", .duration).frame(width: Widths.time, alignment: .trailing)
         }
         .font(.caption.weight(.semibold))
@@ -256,6 +257,7 @@ struct SongRow: View {
     var selected: Bool
     var playing: Bool
     var paused: Bool
+    var source = SongSource()
     /// Plays the row as a double click does: in its list, from here.
     var play: () -> Void = {}
 
@@ -327,6 +329,17 @@ struct SongRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(secondary)
             .opacity(hovered && !track.isEpisode ? 1 : 0)
+            .frame(width: Widths.heart)
+            // Music's More button, on the row under the pointer.
+            Menu {
+                SongMenu(tracks: [track], source: source)
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .foregroundStyle(secondary)
+            .opacity(hovered ? 1 : 0)
             .frame(width: Widths.heart)
             Text(track.duration)
                 .monospacedDigit()
@@ -420,8 +433,13 @@ struct SongMenu: View {
             }
             Button("Remove from This Playlist") { model.remove(tracks, from: playlist) }
         }
+        if !tracks.contains(where: \.isEpisode) {
+            Button("Add to Liked Songs") { model.setSaved(tracks, true) }
+            if source.context != nil, source.context == model.likedContext {
+                Button("Remove from Liked Songs") { model.setSaved(tracks, false) }
+            }
+        }
         if let first, tracks.count == 1, !first.isEpisode {
-            Button("Save to / Remove from Liked Songs") { model.toggleSaved(first.uri) }
             Divider()
             Button("Start Radio") { model.startRadio(seed: first.uri) }
             if let album = first.album?.id {

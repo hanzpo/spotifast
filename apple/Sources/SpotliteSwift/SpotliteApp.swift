@@ -37,6 +37,14 @@ struct SpotliteApp: App {
                 Button("New Playlist…") { model.requestNewPlaylist() }
                     .keyboardShortcut("n")
             }
+            CommandGroup(after: .textEditing) {
+                Button("Search") {
+                    model.showNowPlaying = false
+                    model.root = .search
+                    model.searchFocused = true
+                }
+                .keyboardShortcut("f")
+            }
             CommandGroup(after: .sidebar) {
                 Button("Back") { model.back() }
                     .keyboardShortcut("[")

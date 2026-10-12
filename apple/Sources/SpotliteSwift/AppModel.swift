@@ -60,6 +60,8 @@ final class AppModel {
     // MARK: Search
 
     var searchText = ""
+    /// Set to put the cursor in the search field, as Command-F does.
+    var searchFocused = false
 
     // MARK: Player
 
@@ -365,6 +367,15 @@ final class AppModel {
         }
         player.repeat = next
         send("player.repeat", ["mode": next])
+    }
+
+    /// Saves songs to Liked Songs, or takes them out.
+    func setSaved(_ tracks: [Track], _ saved: Bool) {
+        if tracks.contains(where: { $0.uri == player.uri }) { player.saved = saved }
+        send(
+            "library.set", ["uris": tracks.map(\.uri), "saved": saved],
+            done: saved ? "Added to Liked Songs" : "Removed from Liked Songs")
+        revision += 1
     }
 
     func toggleSaved(_ uri: String) {

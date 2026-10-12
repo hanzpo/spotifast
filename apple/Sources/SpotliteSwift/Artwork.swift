@@ -77,3 +77,25 @@ struct Artwork: View {
         }
     }
 }
+
+/// An image from a URL that fills whatever frame it is given, cropped.
+struct FillImage: View {
+    var url: String?
+    @State private var image: NSImage?
+
+    var body: some View {
+        Rectangle()
+            .fill(.quaternary)
+            .overlay {
+                if let image {
+                    Image(nsImage: image).resizable().scaledToFill()
+                }
+            }
+            .clipped()
+            .task(id: url) {
+                guard let url = url.flatMap(URL.init(string:)) else { return }
+                image = ImageCache.shared.cached(url)
+                if image == nil { image = await ImageCache.shared.image(url) }
+            }
+    }
+}

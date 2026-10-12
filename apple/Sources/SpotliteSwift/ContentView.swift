@@ -50,6 +50,7 @@ private struct NewPlaylistRequest: Identifiable {
 /// The signed-in window: the sidebar, the page, the panels and the player.
 struct Shell: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         @Bindable var model = model
@@ -108,6 +109,12 @@ struct Shell: View {
         .animation(.easeInOut(duration: 0.25), value: model.showNowPlaying)
         .toolbar(model.showNowPlaying ? .hidden : .automatic, for: .windowToolbar)
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
+        .searchFocused($searchFocused)
+        .onChange(of: model.searchFocused) { _, wanted in
+            guard wanted else { return }
+            searchFocused = true
+            model.searchFocused = false
+        }
         // Space plays and pauses, as in Music; a text field being typed in
         // takes its own spaces first.
         .onKeyPress(.space) {
@@ -245,6 +252,7 @@ struct Account: View {
         if let user = model.hello?.user {
             Menu {
                 if let product = user.product { Text("Spotify \(product.capitalized)") }
+                Button("Profile") { model.open(.user(user.id)) }
                 Button("Settings…") { openSettings() }
                 Divider()
                 Button("Sign Out") { model.signOut() }

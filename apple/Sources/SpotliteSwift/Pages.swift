@@ -345,12 +345,11 @@ struct ArtistView: View {
             let top = (page.topTracks ?? []).enumerated().map { var track = $1; track.position = $0; return track }
             PageScroll {
                 if let artist = page.artist {
-                    PageHeader(
-                        cover: artist.cover,
-                        title: artist.name,
+                    ArtistHero(
+                        image: artist.cover,
+                        name: artist.name,
                         facts: [artist.followers.map { "\($0.formatted()) followers" }].compactMap { $0 }
-                            + (artist.genres ?? []).prefix(2),
-                        round: true
+                            + (artist.genres ?? []).prefix(2)
                     ) {
                         PlayButtons(context: artist.uri)
                         Button(page.following == true ? "Following" : "Follow") {
@@ -683,5 +682,52 @@ struct MoreByArtist: View {
                 ShelfView(title: "More by \(name)", cards: cards, seeAll: .discography(artistID))
             }
         }
+    }
+}
+
+/// Music's artist header: the artist's picture across the page, the name
+/// large over its foot, and the actions beneath.
+struct ArtistHero<Actions: View>: View {
+    var image: String?
+    var name: String
+    var facts: [String]
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            FillImage(url: image)
+                .frame(height: 340)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+                }
+                .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(name)
+                            .font(.system(size: 44, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        if !facts.isEmpty {
+                            Text(facts.joined(separator: " · ").uppercased())
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 22)
+                }
+                // Across the page, past its margins.
+                .padding(.horizontal, -28)
+                .padding(.top, -12)
+            GlassEffectContainer {
+                HStack(spacing: 10) { actions }
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
+                    .foregroundStyle(.tint)
+                    .fontWeight(.semibold)
+            }
+        }
+        .padding(.bottom, 28)
     }
 }
