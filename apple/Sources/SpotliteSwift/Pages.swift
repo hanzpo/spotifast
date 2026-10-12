@@ -8,6 +8,8 @@ struct RouteView: View {
         switch route {
         case .home: HomeView()
         case .search: SearchView()
+        case .recentlyAdded: RecentlyAddedView()
+        case .allPlaylists: AllPlaylistsView()
         case .liked: SongsView(method: "library.liked", params: [:])
         case .topSongs: SongsView(method: "top_songs.get", params: [:])
         case .playlist(let id): SongsView(method: "playlist.get", params: ["id": id])
@@ -584,6 +586,42 @@ struct EpisodeShelf: View {
                 }
             }
             .scrollIndicators(.never)
+        }
+    }
+}
+
+// MARK: Recently Added
+
+/// What was saved lately, newest first, as Music's Recently Added.
+struct RecentlyAddedView: View {
+    var body: some View {
+        Loader(method: "library.albums", loading: { $0.loading }) {
+            (page: CardsPage, more: @escaping () -> Void) in
+            let cards = page.cards.sorted { ($0.addedAt ?? "") > ($1.addedAt ?? "") }
+            PageScroll {
+                PageTitle(text: "Recently Added")
+                CardGrid(cards: cards, more: page.more == true ? more : nil)
+                LoadingFooter(loading: page.loading, error: page.error)
+            }
+        }
+    }
+}
+
+// MARK: All Playlists
+
+struct AllPlaylistsView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PageScroll {
+            HStack(alignment: .firstTextBaseline) {
+                PageTitle(text: "All Playlists")
+                Spacer()
+                Button("New Playlist…") { model.requestNewPlaylist() }
+                    .buttonStyle(.glass)
+            }
+            CardGrid(cards: [Card(kind: "liked", id: "liked", uri: model.likedContext ?? "", name: "Liked Songs",
+                                  subtitle: "Playlist", image: nil)] + model.playlists.map(\.card))
         }
     }
 }

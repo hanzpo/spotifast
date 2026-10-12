@@ -71,6 +71,7 @@ struct Card: Codable, Hashable, Identifiable, Sendable {
     var name: String
     var subtitle: String?
     var image: String?
+    var addedAt: String?
 
     var route: Route? {
         switch kind {
@@ -411,6 +412,8 @@ struct SettingsState: Codable, Sendable {
 enum Route: Hashable, Sendable {
     case home
     case search
+    case recentlyAdded
+    case allPlaylists
     case liked
     case albums
     case artists
@@ -429,6 +432,8 @@ enum Route: Hashable, Sendable {
         switch self {
         case .home: "home"
         case .search: "search"
+        case .recentlyAdded: "recently-added"
+        case .allPlaylists: "all-playlists"
         case .liked: "liked"
         case .albums: "albums"
         case .artists: "artists"
@@ -448,6 +453,8 @@ enum Route: Hashable, Sendable {
         let parts = page.split(separator: ":", maxSplits: 1).map(String.init)
         switch (parts.first, parts.count > 1 ? parts[1] : nil) {
         case ("home", _): self = .home
+        case ("recently-added", _): self = .recentlyAdded
+        case ("all-playlists", _): self = .allPlaylists
         case ("search", _): self = .search
         case ("liked", _): self = .liked
         case ("albums", _): self = .albums
@@ -474,4 +481,19 @@ func formatTime(ms: Int) -> String {
     return hours > 0
         ? String(format: "%d:%02d:%02d", hours, minutes, rest)
         : String(format: "%d:%02d", minutes, rest)
+}
+
+struct RecentPlays: Codable, Sendable {
+    var loading: Bool
+    var error: String?
+    var more: Bool?
+    var tracks: [Track]
+}
+
+extension Playlist {
+    /// The playlist as a card in a grid.
+    var card: Card {
+        Card(kind: "playlist", id: id, uri: uri, name: name,
+             subtitle: owner.name.isEmpty ? nil : "By \(owner.name)", image: cover ?? image)
+    }
 }

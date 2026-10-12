@@ -92,7 +92,7 @@ final class AppModel {
         // For screenshots and debugging: the page and panel to start on.
         let environment = ProcessInfo.processInfo.environment
         if let page = environment["SPOTLITE_ROUTE"], let route = Route(page: page) {
-            if case .playlist = route { root = route } else if [.home, .search, .liked, .albums, .artists, .podcasts, .episodes, .topSongs].contains(route) {
+            if case .playlist = route { root = route } else if [.home, .search, .recentlyAdded, .allPlaylists, .liked, .albums, .artists, .podcasts, .episodes, .topSongs].contains(route) {
                 root = route
             } else {
                 path = [route]

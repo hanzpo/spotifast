@@ -116,6 +116,8 @@ struct Shell: View {
         switch model.route {
         case .home: "Home"
         case .search: "Search"
+        case .recentlyAdded: "Recently Added"
+        case .allPlaylists: "All Playlists"
         case .liked: "Liked Songs"
         case .albums: "Albums"
         case .artists: "Artists"
@@ -144,6 +146,7 @@ struct Sidebar: View {
         ) {
             Label("Home", systemImage: "house").tag(Route.home)
             Section("Library") {
+                Label("Recently Added", systemImage: "clock").tag(Route.recentlyAdded)
                 Label("Liked Songs", systemImage: "heart")
                     .tag(Route.liked)
                     .dropDestination(for: String.self) { uris, _ in
@@ -157,6 +160,7 @@ struct Sidebar: View {
                 Label("Top Songs", systemImage: "chart.line.uptrend.xyaxis").tag(Route.topSongs)
             }
             Section {
+                Label("All Playlists", systemImage: "square.grid.2x2").tag(Route.allPlaylists)
                 ForEach(model.sidebarRows) { row in
                     SidebarRowView(row: row)
                 }

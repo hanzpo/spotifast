@@ -85,10 +85,16 @@ struct CardView: View {
     var body: some View {
         VStack(alignment: card.round ? .center : .leading, spacing: 6) {
             ZStack(alignment: .bottomTrailing) {
-                Artwork(
-                    url: card.image, size: size, radius: 8,
-                    placeholder: card.round ? "person.fill" : "music.note",
-                    circle: card.round)
+                Group {
+                    if card.kind == "liked" {
+                        LikedCover(size: size)
+                    } else {
+                        Artwork(
+                            url: card.image, size: size, radius: 8,
+                            placeholder: card.round ? "person.fill" : "music.note",
+                            circle: card.round)
+                    }
+                }
                     .shadow(color: .black.opacity(hovered ? 0.3 : 0.15), radius: hovered ? 10 : 6, y: 4)
                 if hovered, card.kind != "artist", card.kind != "user" {
                     Button {

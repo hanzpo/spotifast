@@ -5,10 +5,30 @@ import SwiftUI
 /// What plays next: the songs queued by hand, then the context's.
 struct QueueView: View {
     @Environment(AppModel.self) private var model
+    @State private var tab = "next"
 
     var body: some View {
+        VStack(spacing: 0) {
+            PanelHeader(title: tab == "next" ? "Playing Next" : "History")
+            Picker("", selection: $tab) {
+                Text("Playing Next").tag("next")
+                Text("History").tag("history")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+            if tab == "next" {
+                upNext
+            } else {
+                HistoryList()
+            }
+        }
+    }
+
+    private var upNext: some View {
         let queue = model.queue
-        List {
+        return List {
             if let current = queue?.current {
                 Section("Now Playing") {
                     QueueRow(track: current, playing: true)
@@ -52,8 +72,55 @@ struct QueueView: View {
             }
         }
         .listStyle(.inset)
-        .safeAreaInset(edge: .top) { PanelHeader(title: "Queue") }
+        .safeAreaInset(edge: .bottom) {
+            if queue?.current != nil {
+                Button("Save as Playlist") {
+                    model.send("queue.save", done: "Saving the queue as a playlist")
+                }
+                .buttonStyle(.glass)
+                .padding(12)
+            }
+        }
         .task { await model.loadQueue() }
+    }
+}
+
+/// What was played lately, newest first; a row plays again on a double
+/// click.
+struct HistoryList: View {
+    @Environment(AppModel.self) private var model
+    @State private var plays: RecentPlays?
+
+    var body: some View {
+        List {
+            ForEach(Array((plays?.tracks ?? []).enumerated()), id: \.offset) { index, track in
+                QueueRow(track: track, playing: false)
+                    .onTapGesture(count: 2) { model.play(track, in: nil, tracks: [track]) }
+                    .contextMenu { SongMenu(tracks: [track], source: SongSource()) }
+                    .onAppear {
+                        if index == (plays?.tracks.count ?? 0) - 1, plays?.more == true {
+                            model.send("library.recent_more")
+                            Task { try? await Task.sleep(for: .seconds(1)); await load() }
+                        }
+                    }
+            }
+            if plays == nil || plays?.loading == true {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if plays?.tracks.isEmpty == true {
+                ContentUnavailableView("Nothing played yet", systemImage: "clock")
+            }
+        }
+        .listStyle(.inset)
+        .task { await load() }
+    }
+
+    private func load() async {
+        for attempt in 0..<20 {
+            guard let next = try? await model.call("library.recent", as: RecentPlays.self) else { return }
+            plays = next
+            if !next.loading { return }
+            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 300 : 800))
+        }
     }
 }
 
