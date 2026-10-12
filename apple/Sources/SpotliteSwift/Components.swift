@@ -138,6 +138,11 @@ struct CardMenu: View {
             Button("Shuffle") { model.play(context: card.uri, shuffle: true) }
             Divider()
         }
+        if card.kind == "album" {
+            Button("Play Next") {
+                model.send("queue.add", ["uri": card.uri, "name": card.name], done: "Added to queue")
+            }
+        }
         if let route = card.route {
             Button("Open") { model.open(route) }
         }

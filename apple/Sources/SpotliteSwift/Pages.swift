@@ -16,6 +16,7 @@ struct RouteView: View {
         case .album(let id): SongsView(method: "album.get", params: ["id": id])
         case .radio(let seed): SongsView(method: "radio.get", params: ["seed": seed])
         case .artist(let id): ArtistView(id: id)
+        case .discography(let id): DiscographyView(id: id)
         case .show(let id): ShowView(id: id)
         case .user(let id): UserView(id: id)
         case .albums: LibraryGrid(method: "library.albums", title: "Albums")
@@ -111,7 +112,7 @@ struct SearchView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 520)
+                .fixedSize()
                 .padding(.bottom, 22)
                 if let results, results.query == query {
                     resultsView(results)
@@ -251,7 +252,13 @@ struct SongsView: View {
                                 Divider()
                             }
                             Button("Add All to Queue") { model.addToQueue(tracks) }
-                            Button("Start Radio") { model.startRadio(seed: uri) }
+                            if let seed = page.seed {
+                                Button("Save as Playlist") {
+                                    model.send("radio.save", ["seed": seed], done: "Saving the radio as a playlist")
+                                }
+                            } else {
+                                Button("Start Radio") { model.startRadio(seed: uri) }
+                            }
                             Button("Copy Link") { model.copyLink(uri) }
                         } label: {
                             Image(systemName: "ellipsis").frame(width: 20)
@@ -292,6 +299,10 @@ struct SongsView: View {
                 if !page.loading, tracks.isEmpty, page.error == nil {
                     ContentUnavailableView("Nothing here yet", systemImage: "music.note.list")
                         .padding(.top, 40)
+                }
+                if method == "album.get", let artist = page.artists?.first, let artistID = artist.id {
+                    MoreByArtist(artistID: artistID, name: artist.name, except: params["id"])
+                        .padding(.top, 36)
                 }
             }
         }
@@ -374,7 +385,7 @@ struct ArtistView: View {
                     // for the next.
                     let next = page.more == true ? more : nil
                     if let albums = page.albums, !albums.isEmpty {
-                        ShelfView(title: "Albums", cards: albums, more: next)
+                        ShelfView(title: "Albums", cards: albums, seeAll: .discography(id), more: next)
                     }
                     if let singles = page.singles, !singles.isEmpty {
                         ShelfView(title: "Singles & EPs", cards: singles, more: next)
@@ -622,6 +633,55 @@ struct AllPlaylistsView: View {
             }
             CardGrid(cards: [Card(kind: "liked", id: "liked", uri: model.likedContext ?? "", name: "Liked Songs",
                                   subtitle: "Playlist", image: nil)] + model.playlists.map(\.card))
+        }
+    }
+}
+
+// MARK: Discography
+
+/// Everything an artist has released, as Music's See All.
+struct DiscographyView: View {
+    var id: String
+    @State private var kind = "Albums"
+
+    var body: some View {
+        Loader(method: "artist.get", params: ["id": id], loading: { $0.loading }) {
+            (page: ArtistPage, more: @escaping () -> Void) in
+            let cards: [Card] = switch kind {
+            case "Singles & EPs": page.singles ?? []
+            case "Compilations": page.compilations ?? []
+            case "Appears On": page.appearsOn ?? []
+            default: page.albums ?? []
+            }
+            PageScroll {
+                PageTitle(text: page.artist?.name ?? "Discography")
+                Picker("Show", selection: $kind) {
+                    ForEach(["Albums", "Singles & EPs", "Compilations", "Appears On"], id: \.self) { Text($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .padding(.bottom, 22)
+                CardGrid(cards: cards, more: page.more == true ? more : nil)
+                LoadingFooter(loading: page.loading, error: page.error)
+            }
+        }
+    }
+}
+
+/// An album page's foot: the artist's other releases.
+struct MoreByArtist: View {
+    var artistID: String
+    var name: String
+    var except: String?
+
+    var body: some View {
+        Loader(method: "artist.get", params: ["id": artistID], loading: { $0.loading }) {
+            (page: ArtistPage, _) in
+            let cards = ((page.albums ?? []) + (page.singles ?? [])).filter { $0.id != except }
+            if !cards.isEmpty {
+                ShelfView(title: "More by \(name)", cards: cards, seeAll: .discography(artistID))
+            }
         }
     }
 }

@@ -130,6 +130,7 @@ struct Shell: View {
         case .show: "Podcast"
         case .user: "Profile"
         case .radio: "Radio"
+        case .discography: "Discography"
         }
     }
 }
@@ -364,9 +365,16 @@ struct EditPlaylistSheet: View {
     @State private var name = ""
     @State private var description = ""
     @State private var isPublic = false
+    @State private var choosing = false
+
+    private func chooseCover() { choosing = true }
 
     var body: some View {
         Form {
+            HStack(spacing: 14) {
+                Artwork(url: playlist.cover ?? playlist.image, size: 72, radius: 6)
+                Button("Choose Cover Image…") { chooseCover() }
+            }
             TextField("Name", text: $name)
             TextField("Description", text: $description, axis: .vertical)
                 .lineLimit(3...6)
@@ -375,6 +383,16 @@ struct EditPlaylistSheet: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .navigationTitle("Edit Details")
+        .fileImporter(isPresented: $choosing, allowedContentTypes: [.image]) { result in
+            guard case .success(let url) = result else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            // The engine reads the file; a copy it can always reach.
+            let copy = FileManager.default.temporaryDirectory
+                .appendingPathComponent("spotlite-cover-\(UUID().uuidString).\(url.pathExtension)")
+            try? FileManager.default.copyItem(at: url, to: copy)
+            model.send("playlist.cover", ["id": playlist.id, "path": copy.path], done: "Uploading the cover")
+        }
         .onAppear {
             name = playlist.name
             description = playlist.description ?? ""

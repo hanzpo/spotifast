@@ -426,6 +426,7 @@ enum Route: Hashable, Sendable {
     case show(String)
     case user(String)
     case radio(String)
+    case discography(String)
 
     /// The server's name for the page, as `page.more` and the pages take it.
     var page: String {
@@ -446,6 +447,7 @@ enum Route: Hashable, Sendable {
         case .show(let id): "show:\(id)"
         case .user(let id): "user:\(id)"
         case .radio(let seed): "radio:\(seed)"
+        case .discography(let id): "discography:\(id)"
         }
     }
 
@@ -468,6 +470,7 @@ enum Route: Hashable, Sendable {
         case ("show", let id?): self = .show(id)
         case ("user", let id?): self = .user(id)
         case ("radio", let seed?): self = .radio(seed)
+        case ("discography", let id?): self = .discography(id)
         default: return nil
         }
     }
