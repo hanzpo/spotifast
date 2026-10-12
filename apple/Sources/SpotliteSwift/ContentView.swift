@@ -224,7 +224,6 @@ struct Account: View {
             Menu {
                 if let product = user.product { Text("Spotify \(product.capitalized)") }
                 Button("Settings…") { openSettings() }
-                Button("Open Spotlite Window") { model.send("app.show_window") }
                 Divider()
                 Button("Sign Out") { model.signOut() }
             } label: {

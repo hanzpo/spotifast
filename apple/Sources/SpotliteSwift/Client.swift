@@ -10,7 +10,7 @@ final class Client: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .notRunning(let path): "Spotlite isn't running (no socket at \(path))."
+            case .notRunning: "Spotlite's engine didn't start."
             case .server(let message): message
             case .closed: "The connection to Spotlite closed."
             }

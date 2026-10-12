@@ -1,42 +1,56 @@
 import AppKit
 import Foundation
 
-/// Finds the Spotlite that serves this app, starting it when it isn't
-/// running: it keeps the Spotify session and plays the audio.
+/// Finds the engine that serves this app, starting it when it isn't
+/// running. The engine, Spotlite's Rust core, keeps the Spotify session
+/// and plays the audio; it ships inside this app and runs out of sight.
 @MainActor
 enum Connector {
-    /// The installed Spotlite, which this app starts in the background.
-    static var serverApp: URL? {
-        let workspace = NSWorkspace.shared
-        if let url = workspace.urlForApplication(withBundleIdentifier: "rocks.spotifast.Spotifast") {
-            return url
-        }
-        let installed = URL(fileURLWithPath: "/Applications/Spotlite.app")
-        return FileManager.default.fileExists(atPath: installed.path) ? installed : nil
+    /// The engine started from here, which quits when this app does.
+    private static var engine: Process?
+
+    /// The engine inside this app's bundle.
+    static var bundledEngine: URL? {
+        let url = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Helpers/Spotlite Engine.app/Contents/MacOS/Spotlite")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
+    }
+
+    /// An engine installed elsewhere, for runs from the build folder.
+    static var installedEngine: URL? {
+        let url = URL(fileURLWithPath: "/Applications/Spotlite.app/Contents/Helpers/Spotlite Engine.app/Contents/MacOS/Spotlite")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
     static func connect() async throws -> Client {
         if let client = try? Client() { return client }
         // A demo or another socket named on the command line is never
         // started from here.
-        guard ProcessInfo.processInfo.environment["SPOTLITE_SOCKET"] == nil, let app = serverApp else {
+        guard ProcessInfo.processInfo.environment["SPOTLITE_SOCKET"] == nil,
+              let executable = bundledEngine ?? installedEngine
+        else {
             return try Client()
         }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        configuration.addsToRecentItems = false
-        configuration.createsNewApplicationInstance = false
-        configuration.arguments = ["--background"]
-        _ = try? await NSWorkspace.shared.openApplication(at: app, configuration: configuration)
-        // Spotlite takes a moment to open its session and its socket.
+        if engine?.isRunning != true {
+            let process = Process()
+            process.executableURL = executable
+            // No window and no Dock icon, and gone as soon as this app is.
+            process.arguments = ["--background", "--exit-with-parent"]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            engine = process
+        }
+        // The engine takes a moment to open its session and its socket.
         var failure: Error = Client.Failure.notRunning(Client.defaultPath)
-        for _ in 0..<60 {
+        for _ in 0..<80 {
             try? await Task.sleep(for: .milliseconds(250))
             do {
                 return try Client()
             } catch {
                 failure = error
             }
+            if engine?.isRunning == false { break }
         }
         throw failure
     }
