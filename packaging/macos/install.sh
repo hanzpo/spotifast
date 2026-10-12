@@ -8,6 +8,12 @@
 # another .icns file to use that instead, or to an empty string to keep the
 # bundled icon. Set APP_DIR to install somewhere other than /Applications.
 # A running copy is quit first and the new one is opened afterwards.
+#
+# The bundle is signed with this Mac's Apple Development certificate when it
+# has one, or CODESIGN_IDENTITY when set ("-" signs ad hoc). The keychain
+# trusts a signing identity, not a build, so Always Allow on its prompts
+# lasts across reinstalls; an ad hoc signature is new with every build and
+# asks again for each saved sign-in.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,6 +22,12 @@ cd "$root"
 app_dir="${APP_DIR:-/Applications}"
 version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
 bundle="target/Spotlite.app"
+if [ -z "${CODESIGN_IDENTITY:-}" ]; then
+    CODESIGN_IDENTITY="$(security find-identity -v -p codesigning \
+        | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Apple Development: .*"$/\1/p' \
+        | head -n1)"
+fi
+identity="${CODESIGN_IDENTITY:--}"
 
 cargo build --release --locked
 packaging/macos/bundle.sh target/release/spotifast "$bundle" "$version"
@@ -26,9 +38,9 @@ if [ -z "${ICON+set}" ] && [ -f "$spotify_icon" ]; then
 fi
 if [ -n "${ICON:-}" ]; then
     cp "$ICON" "$bundle/Contents/Resources/spotifast.icns"
-    # Replacing a resource breaks the signature bundle.sh made.
-    codesign --force --deep --sign "${CODESIGN_IDENTITY:--}" "$bundle"
 fi
+# bundle.sh signs ad hoc; sign again with the identity, after the icon.
+codesign --force --deep --sign "$identity" "$bundle"
 
 # Spotifast is the name the app had before; replace that copy too.
 for name in Spotlite Spotifast; do
