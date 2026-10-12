@@ -36,10 +36,20 @@ struct HomeView: View {
                     ForEach(home.shelves) { shelf in
                         if let cards = shelf.cards, !cards.isEmpty {
                             ShelfView(title: shelf.title, cards: cards)
+                        } else if let tracks = shelf.tracks, !tracks.isEmpty, tracks.allSatisfy(\.isEpisode) {
+                            EpisodeShelf(title: shelf.title, episodes: tracks)
                         } else if let tracks = shelf.tracks, !tracks.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
-                                Text(shelf.title).font(.title2.weight(.bold))
-                                SongList(tracks: tracks, columns: [.cover, .album])
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(shelf.title).font(.title2.weight(.bold))
+                                    Spacer()
+                                    if let page = shelf.seeAll, let route = Route(page: page) {
+                                        Button("See All") { model.open(route) }.buttonStyle(.link)
+                                    }
+                                }
+                                SongList(
+                                    tracks: tracks.enumerated().map { var track = $1; track.position = $0; return track },
+                                    columns: [.number, .cover, .album])
                             }
                         }
                     }
@@ -208,6 +218,8 @@ struct SongsView: View {
                             Image(systemName: "ellipsis").frame(width: 20)
                         }
                         .menuIndicator(.hidden)
+                        .menuStyle(.borderlessButton)
+                        .glassMenu()
                     }
                 }
                 if tracks.count > 12 {
@@ -287,6 +299,8 @@ struct ArtistView: View {
                             Image(systemName: "ellipsis").frame(width: 20)
                         }
                         .menuIndicator(.hidden)
+                        .menuStyle(.borderlessButton)
+                        .glassMenu()
                     }
                 }
                 VStack(alignment: .leading, spacing: 32) {
@@ -463,6 +477,57 @@ struct LibraryGrid: View {
                         .padding(.top, 40)
                 }
             }
+        }
+    }
+}
+
+/// Episodes to listen to, as cards that play where they left off.
+struct EpisodeShelf: View {
+    @Environment(AppModel.self) private var model
+    var title: String
+    var episodes: [Track]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.title2.weight(.bold))
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 20) {
+                    ForEach(episodes) { episode in
+                        VStack(alignment: .leading, spacing: 6) {
+                            ZStack(alignment: .bottomLeading) {
+                                Artwork(url: episode.image, size: 168, radius: 8)
+                                    .shadow(color: .black.opacity(0.15), radius: 6, y: 4)
+                                if let resume = episode.resumeMs, resume > 0, episode.durationMs > 0 {
+                                    Capsule().fill(.white.opacity(0.35))
+                                        .frame(width: 148, height: 4)
+                                        .overlay(alignment: .leading) {
+                                            Capsule().fill(.white)
+                                                .frame(width: 148 * min(Double(resume) / Double(episode.durationMs), 1), height: 4)
+                                        }
+                                        .padding(10)
+                                }
+                            }
+                            Text(episode.name)
+                                .font(.callout.weight(.medium))
+                                .lineLimit(2)
+                            Text(episode.subtitle ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(width: 168, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.play(episode, in: nil, tracks: [episode]) }
+                        .contextMenu {
+                            Button("Play") { model.play(episode, in: nil, tracks: [episode]) }
+                            if let show = episode.showId {
+                                Button("Go to Podcast") { model.open(.show(show)) }
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollIndicators(.never)
         }
     }
 }

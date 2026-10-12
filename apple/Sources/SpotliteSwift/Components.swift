@@ -350,3 +350,15 @@ struct AnyLabelStyle: LabelStyle {
 
     func makeBody(configuration: Configuration) -> some View { make(configuration) }
 }
+
+extension View {
+    /// A menu dressed as the glass buttons beside it: menus take no
+    /// button style of their own.
+    func glassMenu() -> some View {
+        self
+            .fixedSize()
+            .frame(width: 44, height: 30)
+            .contentShape(Capsule())
+            .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
