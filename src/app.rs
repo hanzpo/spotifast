@@ -3110,7 +3110,7 @@ impl App {
     ///
     /// MPRIS passes `art_url` to the desktop, which fetches whatever it
     /// wants: Linux needs no file and downloads nothing extra.
-    fn media_art_file(&mut self, ctx: &egui::Context, url: &str) -> Option<PathBuf> {
+    pub(crate) fn media_art_file(&mut self, ctx: &egui::Context, url: &str) -> Option<PathBuf> {
         if cfg!(target_os = "linux") {
             return None;
         }

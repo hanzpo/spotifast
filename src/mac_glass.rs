@@ -86,6 +86,11 @@ pub fn install(window: &impl HasWindowHandle) {
     });
 }
 
+/// winit's view, which the page is drawn in, for views laid over it.
+pub(crate) fn content_view() -> Option<Retained<NSView>> {
+    GLASS.with(|glass| glass.borrow().as_ref().map(|glass| glass.content.clone()))
+}
+
 /// Places the glass in `column`, in window points from the top left, on a
 /// `window`-coloured ground, or hides it with `None`. Cheap when nothing
 /// changed.

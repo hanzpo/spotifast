@@ -31,6 +31,8 @@ pub mod mac_menu;
 #[cfg(target_os = "macos")]
 pub mod mac_notch;
 #[cfg(target_os = "macos")]
+pub mod mac_player;
+#[cfg(target_os = "macos")]
 pub mod mac_touchbar_crash_guard;
 pub mod model;
 pub mod notch;

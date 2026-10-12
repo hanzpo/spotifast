@@ -45,6 +45,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         #[cfg(target_os = "macos")]
         crate::mac_glass::show_sidebar(None, app.palette.window);
         player_bar::end_tint_session(ctx);
+        #[cfg(target_os = "macos")]
+        crate::mac_player::hide();
         login::show(app, ui, connecting);
         toasts(app, ctx, 20.0);
         window_controls(ui, &app.palette, app.locale);
