@@ -74,7 +74,8 @@ struct SongList: View {
                     striped: track.position % 2 == 1,
                     selected: selection.contains(track.id),
                     playing: model.player.uri == track.uri,
-                    paused: model.player.playing != true
+                    paused: model.player.playing != true,
+                    play: { play(track) }
                 )
                 .contentShape(Rectangle())
                 .gesture(TapGesture(count: 2).onEnded { play(track) })
@@ -84,7 +85,7 @@ struct SongList: View {
                 .contextMenu { SongMenu(tracks: picked(around: track), source: source) }
                 .draggable(track.uri)
                 .onAppear {
-                    if track.position == tracks.count - 1 { more?() }
+                    if track.id == tracks.last?.id { more?() }
                 }
             }
         }
@@ -127,7 +128,7 @@ struct SongList: View {
             pick(track)
             return
         }
-        let end = track.position
+        guard let end = tracks.firstIndex(where: { $0.id == track.id }) else { return }
         selection = Set(tracks[min(start, end)...max(start, end)].map(\.id))
     }
 
@@ -233,6 +234,8 @@ struct SongRow: View {
     var selected: Bool
     var playing: Bool
     var paused: Bool
+    /// Plays the row as a double click does: in its list, from here.
+    var play: () -> Void = {}
 
     @State private var hovered = false
 
@@ -324,9 +327,7 @@ struct SongRow: View {
     @ViewBuilder private var number: some View {
         if hovered {
             Button {
-                if playing { model.toggle() } else {
-                    model.play(track, in: nil, tracks: nil)
-                }
+                if playing { model.toggle() } else { play() }
             } label: {
                 Image(systemName: playing && !paused ? "pause.fill" : "play.fill")
             }

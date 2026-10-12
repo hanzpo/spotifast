@@ -140,8 +140,14 @@ struct SettingsView: View {
             if let next = try? await model.call(
                 "settings.set", ["key": setting.key, "value": value.json], as: SettingsState.self)
             {
-                // A slider's later moves may already be on their way.
-                if case .number = value {} else { state = next }
+                // A slider's later moves may already be on their way, and
+                // the equalizer switch applies just after the answer.
+                if setting.key == "eq_on" {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    await load()
+                } else if case .number = value {} else {
+                    state = next
+                }
             }
         }
     }

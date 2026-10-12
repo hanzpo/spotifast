@@ -18,7 +18,12 @@ final class AppModel {
 
     /// The sidebar's choice, the root of the page stack.
     var root: Route = .home {
-        didSet { if root != oldValue { path = [] } }
+        didSet {
+            if root != oldValue {
+                path = []
+                forwardStack = []
+            }
+        }
     }
     /// Pages opened on top of the root, as Back and Forward walk them.
     var path: [Route] = []
@@ -159,8 +164,9 @@ final class AppModel {
         case "queue":
             if panel == .queue { Task { await loadQueue() } }
         case "toast":
-            if let message = try? JSONDecoder.api.decode(String.self, from: data) {
-                show(message)
+            struct Message: Decodable { var message: String }
+            if let toast = try? JSONDecoder.api.decode(Message.self, from: data) {
+                show(toast.message)
             }
         default:
             break
@@ -230,9 +236,10 @@ final class AppModel {
             params["index"] = tracks.firstIndex { $0.id == track.id } ?? 0
         } else if let context, context.hasPrefix("spotify:station:") {
             // A radio plays the songs it shows, under the station's name.
+            let list = tracks ?? [track]
             params["context"] = context
-            params["uris"] = (tracks ?? [track]).map(\.uri)
-            params["index"] = track.position
+            params["uris"] = list.map(\.uri)
+            params["index"] = list.firstIndex { $0.id == track.id } ?? 0
         } else if let context {
             params["context"] = context
             params["index"] = track.position
@@ -242,26 +249,53 @@ final class AppModel {
             // A list with no Spotify context of its own (search results,
             // an artist's top songs) plays as the songs on screen.
             params["uris"] = tracks.map(\.uri)
-            params["index"] = track.position
+            params["index"] = tracks.firstIndex { $0.id == track.id } ?? 0
         }
         player.uri = track.uri
         player.title = track.name
         player.subtitle = track.artistNames
+        player.artists = track.artists
+        player.album = track.album
+        player.isEpisode = track.isEpisode
+        player.showId = track.showId
         player.image = track.image
+        player.saved = nil
         player.durationMs = track.durationMs
         player.positionMs = 0
         player.playing = true
         player.hasSong = true
         playerAt = Date()
         send("player.play", params)
+        confirmPlayer()
     }
 
-    func play(context: String, shuffle: Bool? = nil) {
+    /// Asks for the player once the engine has had time to act, so a play
+    /// that failed, and sent no news, does not leave its guess on show.
+    private func confirmPlayer() {
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            if let state = try? await call("player.state", as: PlayerState.self) {
+                setPlayer(state)
+            }
+        }
+    }
+
+    func play(context: String, shuffle: Bool? = nil, uris: [String]? = nil) {
         if let shuffle {
             player.shuffle = shuffle
             send("player.shuffle", ["on": shuffle])
         }
-        send("player.play", ["context": context])
+        var params: [String: Any] = ["context": context]
+        // A radio has no list of its own on Spotify: it plays the songs
+        // it shows, shuffled from a random one when asked.
+        if let uris, !uris.isEmpty {
+            params["uris"] = uris
+            let start = shuffle == true ? Int.random(in: 0..<uris.count) : 0
+            params["uri"] = uris[start]
+            params["index"] = start
+        }
+        send("player.play", params)
+        confirmPlayer()
     }
 
     func toggle() {
@@ -443,7 +477,7 @@ final class AppModel {
 
     /// Moves a song one place up or down its playlist.
     func move(_ track: Track, in playlistID: String, by step: Int) {
-        let from = track.position
+        let from = track.spotifyPosition ?? track.position
         // Spotify inserts before `to`, counted before the song leaves.
         let to = step < 0 ? from - 1 : from + 2
         guard to >= 0 else { return }

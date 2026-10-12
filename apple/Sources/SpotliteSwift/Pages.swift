@@ -30,7 +30,7 @@ struct HomeView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Loader(method: "home.get", loading: { $0.loading && $0.shelves.isEmpty }) { (home: HomePage, _) in
+        Loader(method: "home.get", loading: { $0.loading }) { (home: HomePage, _) in
             PageScroll {
                 PageTitle(text: "Home")
                 VStack(alignment: .leading, spacing: 34) {
@@ -213,7 +213,7 @@ struct SongsView: View {
     @State private var sort: SongSort?
 
     var body: some View {
-        Loader(method: method, params: params, loading: { $0.loading && ($0.tracks ?? []).isEmpty }) {
+        Loader(method: method, params: params, loading: { $0.loading }) {
             (page: SongsPage, more: @escaping () -> Void) in
             let tracks = numbered(page.tracks ?? [])
             let shown = sort.map { $0.apply(filtered(tracks)) } ?? filtered(tracks)
@@ -230,7 +230,7 @@ struct SongsView: View {
                         : method == "library.episodes" ? "bookmark.fill" : nil
                 ) {
                     if page.context != nil {
-                        PlayButtons(context: page.context)
+                        PlayButtons(context: page.context, uris: page.stationUris)
                     }
                     if let uri = page.uri, page.owned != true, method != "library.liked" {
                         Button {
@@ -283,7 +283,7 @@ struct SongsView: View {
                             context: page.context,
                             editablePlaylist: page.editable == true ? playlistID : nil,
                             reordered: sort != nil || !filter.isEmpty),
-                        more: page.more == true && filter.isEmpty ? more : nil,
+                        more: page.more == true && filter.isEmpty && sort == nil ? more : nil,
                         sort: method == "album.get" ? nil : $sort)
                 }
                 LoadingFooter(loading: page.loading, error: page.error)
@@ -327,8 +327,8 @@ struct ArtistView: View {
     @State private var showAllTop = false
 
     var body: some View {
-        Loader(method: "artist.get", params: ["id": id], loading: { $0.loading && $0.artist == nil }) {
-            (page: ArtistPage, _) in
+        Loader(method: "artist.get", params: ["id": id], loading: { $0.loading }) {
+            (page: ArtistPage, more: @escaping () -> Void) in
             let top = (page.topTracks ?? []).enumerated().map { var track = $1; track.position = $0; return track }
             PageScroll {
                 if let artist = page.artist {
@@ -368,12 +368,17 @@ struct ArtistView: View {
                             SongList(tracks: showAllTop ? top : Array(top.prefix(5)), columns: [.number, .cover, .album])
                         }
                     }
-                    if let albums = page.albums, !albums.isEmpty { ShelfView(title: "Albums", cards: albums) }
+                    // The discography comes in pages; the end of a shelf asks
+                    // for the next.
+                    let next = page.more == true ? more : nil
+                    if let albums = page.albums, !albums.isEmpty {
+                        ShelfView(title: "Albums", cards: albums, more: next)
+                    }
                     if let singles = page.singles, !singles.isEmpty {
-                        ShelfView(title: "Singles & EPs", cards: singles)
+                        ShelfView(title: "Singles & EPs", cards: singles, more: next)
                     }
                     if let compilations = page.compilations, !compilations.isEmpty {
-                        ShelfView(title: "Compilations", cards: compilations)
+                        ShelfView(title: "Compilations", cards: compilations, more: next)
                     }
                     if let appears = page.appearsOn, !appears.isEmpty { ShelfView(title: "Appears On", cards: appears) }
                     if let related = page.related, !related.isEmpty { ShelfView(title: "Similar Artists", cards: related) }
@@ -391,7 +396,7 @@ struct ShowView: View {
     var id: String
 
     var body: some View {
-        Loader(method: "show.get", params: ["id": id], loading: { $0.loading && $0.show == nil }) {
+        Loader(method: "show.get", params: ["id": id], loading: { $0.loading }) {
             (page: ShowPage, more: @escaping () -> Void) in
             let episodes = (page.episodes ?? []).enumerated().map { var track = $1; track.position = $0; return track }
             PageScroll {
@@ -489,7 +494,7 @@ struct UserView: View {
     var id: String
 
     var body: some View {
-        Loader(method: "user.get", params: ["id": id], loading: { $0.loading && $0.user == nil }) {
+        Loader(method: "user.get", params: ["id": id], loading: { $0.loading }) {
             (page: UserPage, _) in
             PageScroll {
                 if let user = page.user {
@@ -517,7 +522,7 @@ struct LibraryGrid: View {
     var title: String
 
     var body: some View {
-        Loader(method: method, loading: { $0.loading && $0.cards.isEmpty }) {
+        Loader(method: method, loading: { $0.loading }) {
             (page: CardsPage, more: @escaping () -> Void) in
             PageScroll {
                 PageTitle(text: title)

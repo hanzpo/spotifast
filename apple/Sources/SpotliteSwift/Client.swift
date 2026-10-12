@@ -57,6 +57,9 @@ final class Client: @unchecked Sendable {
             close(fd)
             throw Failure.notRunning(path)
         }
+        // A write after the engine has gone fails instead of ending the app.
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         let thread = Thread { [weak self] in self?.readLoop() }
         thread.name = "spotlite-api"
         thread.start()

@@ -68,6 +68,7 @@ struct Loader<Value: Decodable & Sendable, Content: View>: View {
         case "playlist.get": params["id"].map { "playlist:\($0)" }
         case "album.get": params["id"].map { "album:\($0)" }
         case "show.get": params["id"].map { "show:\($0)" }
+        case "artist.get": params["id"].map { "artist:\($0)" }
         default: nil
         }
     }
@@ -169,6 +170,8 @@ struct ShelfView: View {
     var title: String
     var cards: [Card]
     var seeAll: Route?
+    /// Asks for more cards when the shelf is scrolled to its end.
+    var more: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -182,7 +185,10 @@ struct ShelfView: View {
             }
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 20) {
-                    ForEach(cards) { card in CardView(card: card) }
+                    ForEach(cards) { card in
+                        CardView(card: card)
+                            .onAppear { if card.id == cards.last?.id { more?() } }
+                    }
                 }
                 .scrollTargetLayout()
             }
@@ -271,16 +277,18 @@ struct PageHeader<Actions: View>: View {
 struct PlayButtons: View {
     @Environment(AppModel.self) private var model
     var context: String?
+    /// A radio's songs, which it plays under its station's name.
+    var uris: [String]?
 
     var body: some View {
         Button {
-            if let context { model.play(context: context, shuffle: false) }
+            if let context { model.play(context: context, shuffle: false, uris: uris) }
         } label: {
             Label("Play", systemImage: "play.fill").frame(minWidth: 70)
         }
         .disabled(context == nil)
         Button {
-            if let context { model.play(context: context, shuffle: true) }
+            if let context { model.play(context: context, shuffle: true, uris: uris) }
         } label: {
             Label("Shuffle", systemImage: "shuffle").frame(minWidth: 70)
         }
