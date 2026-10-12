@@ -708,13 +708,19 @@ impl App {
             // ---- the library -----------------------------------------------
             "library.playlists" => {
                 // Asking again retries a load that failed, such as one
-                // Spotify rate limited.
+                // Spotify rate limited, and carries on a list whose later
+                // pages have yet to come or failed to.
                 if matches!(
                     self.library.playlists,
                     Loadable::NotLoaded | Loadable::Failed(_)
                 ) && self.is_connected()
                 {
                     self.load_playlists();
+                } else if self.library.playlists_next.is_some()
+                    && self.library.playlists_asked.is_none()
+                    && self.library.playlists_refresh.is_none()
+                {
+                    self.load_more(Page::Home);
                 }
                 Ok(self.api_playlists())
             }
@@ -1193,6 +1199,10 @@ impl App {
         let (loading, error, playlists) = loadable(&self.library.playlists, |list| {
             list.iter().map(shape).collect()
         });
+        // A list still gathering its pages is not whole yet.
+        let loading = loading
+            || self.library.playlists_next.is_some()
+            || self.library.playlists_asked.is_some();
         // The account's own order, with its folders.
         let rows = self.library.playlists.get().map(|list| {
             use crate::player::RootlistEntry;

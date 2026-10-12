@@ -4992,6 +4992,9 @@ impl App {
                     } else if offset == 0 {
                         self.library.playlists = Loadable::Failed(error.to_string());
                     } else {
+                        // The list so far stays, and the page that failed is
+                        // the one to ask for again.
+                        self.library.playlists_next = Some(offset);
                         self.toast_error(
                             gettext(self.locale, "Couldn't load more playlists: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -10965,6 +10968,42 @@ mod tests {
 
     fn playlist_ids(ids: &[&str]) -> Option<Vec<String>> {
         Some(ids.iter().map(|id| (*id).to_string()).collect())
+    }
+
+    /// A later page of the library's playlists that fails, as when Spotify
+    /// rate limits it, can be asked for again: the list stopped at its
+    /// first page for good.
+    #[test]
+    fn a_failed_later_playlist_page_can_be_asked_for_again() {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        app.load_playlists();
+        let generation = app.library.playlists_generation;
+        app.handle_api(ApiResponse::MyPlaylists {
+            offset: 0,
+            generation,
+            result: Ok(playlist_page(&["a", "b"], 0, 3)),
+        });
+        assert_eq!(app.library.playlists_asked, Some(2));
+        app.handle_api(ApiResponse::MyPlaylists {
+            offset: 2,
+            generation,
+            result: Err(crate::api::ApiError::RateLimited),
+        });
+        assert_eq!(listed_playlists(&app), playlist_ids(&["a", "b"]));
+        assert_eq!(
+            app.library.playlists_next,
+            Some(2),
+            "the failed page is next"
+        );
+        app.load_more(Page::Home);
+        assert_eq!(app.library.playlists_asked, Some(2));
+        app.handle_api(ApiResponse::MyPlaylists {
+            offset: 2,
+            generation,
+            result: Ok(playlist_page(&["c"], 2, 3)),
+        });
+        assert_eq!(listed_playlists(&app), playlist_ids(&["a", "b", "c"]));
     }
 
     /// A playlist made with songs shows them on its page at once: the
