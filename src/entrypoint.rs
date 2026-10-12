@@ -387,8 +387,12 @@ pub(crate) fn run() -> eframe::Result<()> {
     #[cfg(not(feature = "demo"))]
     let guarded = true;
     let instance = if guarded {
-        match single_instance::acquire(&waker, link.as_deref()) {
+        match single_instance::acquire(&waker, link.as_deref(), cli.background) {
             single_instance::Outcome::Only(guard) => Some(guard),
+            single_instance::Outcome::Surfaced if cli.background => {
+                log::info!("Spotlite is already running and serving; leaving it be");
+                return Ok(());
+            }
             single_instance::Outcome::Surfaced => {
                 log::info!("Spotlite is already running; asked it to show its window");
                 return Ok(());

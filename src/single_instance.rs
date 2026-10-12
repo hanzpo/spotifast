@@ -185,10 +185,16 @@ fn reply(line: &str) -> std::io::Result<Reply> {
 
 /// Claims the running-instance role, or hands `link` (a canonical
 /// `spotify:` URI, see [`crate::link::parse`]) to the instance that has it
-/// and asks that one to come forward.
-pub fn acquire(waker: &crate::backend::Waker, link: Option<&str>) -> Outcome {
-    claim(&slot(), waker, link)
+/// and asks that one to come forward. A `quiet` launch, an engine started
+/// out of sight, only reads the running one's snapshot: it already serves
+/// whoever started this one, and brings no window forward.
+pub fn acquire(waker: &crate::backend::Waker, link: Option<&str>, quiet: bool) -> Outcome {
+    claim(&slot(), waker, if quiet { Some(QUIET) } else { link })
 }
+
+/// What a quiet launch asks of the running instance: a read, which shows
+/// nothing.
+const QUIET: &str = "\u{0}nowplaying";
 
 fn claim(
     slot: &fastframe_instance::Slot,
@@ -197,6 +203,7 @@ fn claim(
 ) -> Outcome {
     let mut guard = Guard::unguarded();
     let request = match link {
+        Some(QUIET) => "nowplaying".to_owned(),
         Some(uri) => format!("open-link {uri}"),
         None => "show".to_owned(),
     };
