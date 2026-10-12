@@ -268,6 +268,12 @@ pub struct App {
     control_now_playing: Option<std::sync::Arc<std::sync::Mutex<String>>>,
     /// The same, for its `devices` verb.
     control_devices: Option<std::sync::Arc<std::sync::Mutex<String>>>,
+    /// The local API front ends such as the Swift app drive (src/server.rs).
+    #[cfg(unix)]
+    api: Option<crate::server::Server>,
+    /// The player as last told to the API's clients, and when.
+    #[cfg(unix)]
+    api_player_sent: Option<(serde_json::Value, Instant)>,
     /// Whether that device slot still matches [`Self::devices`]. The
     /// now-playing snapshot is rebuilt every frame because its position
     /// moves every frame; a device list changes when Spotify answers, which
@@ -741,6 +747,10 @@ impl App {
             control_commands: None,
             control_now_playing: None,
             control_devices: None,
+            #[cfg(unix)]
+            api: None,
+            #[cfg(unix)]
+            api_player_sent: None,
             control_devices_stale: true,
             offline: false,
             palette,
@@ -930,6 +940,17 @@ impl App {
         self.control_commands = Some(guard.commands());
         self.control_now_playing = Some(guard.now_playing_slot());
         self.control_devices = Some(guard.devices_slot());
+    }
+
+    /// Serves the local API (src/server.rs) from a socket in the state
+    /// folder, so front ends such as the Swift app can drive this one.
+    #[cfg(unix)]
+    pub fn serve_api_at(&mut self, waker: &crate::backend::Waker) {
+        let path = self.dirs.state.join("api.sock");
+        match crate::server::Server::start(&path, waker.clone()) {
+            Ok(server) => self.api = Some(server),
+            Err(error) => log::warn!("The local API isn't available: {error}"),
+        }
     }
 
     /// Per-window setup: fonts, icons, loaders, theme. Called every time a
@@ -9138,6 +9159,8 @@ impl App {
             self.scrolling.stop();
         }
         self.handle_control_commands();
+        #[cfg(unix)]
+        self.serve_api();
         self.handle_events();
         self.open_pending_link();
         self.handle_media_commands();
@@ -9890,6 +9913,8 @@ fn cover_error(locale: Locale, error: &crate::api::client::ApiError) -> String {
     }
 }
 
+#[cfg(unix)]
+mod api;
 mod radio;
 
 #[cfg(test)]

@@ -478,6 +478,9 @@ pub(crate) fn run() -> eframe::Result<()> {
     }
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
+        // Only the one running instance serves the API.
+        #[cfg(unix)]
+        app.serve_api_at(&waker);
     }
     if let Some(uri) = link {
         app.open_link(uri);
@@ -486,6 +489,10 @@ pub(crate) fn run() -> eframe::Result<()> {
     if demo {
         spotifast::demo::populate(&mut app);
         spotifast::demo::apply_flags(&mut app, cli.demo_page.as_deref(), cli.demo_show.as_deref());
+        // The demo's own folders, so a front end can try it without an
+        // account.
+        #[cfg(unix)]
+        app.serve_api_at(&waker);
     }
     #[cfg(feature = "demo")]
     let shot = cli.demo_shot.clone().map(|path| Shot {

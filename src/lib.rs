@@ -41,6 +41,8 @@ pub mod paths;
 pub mod player;
 pub mod playlist_cover;
 pub mod resample;
+#[cfg(unix)]
+pub mod server;
 pub mod session_reads;
 pub mod settings;
 pub mod single_instance;
