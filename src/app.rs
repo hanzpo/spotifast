@@ -11138,10 +11138,13 @@ mod tests {
             id: "me".into(),
             ..User::default()
         });
-        let mut library = Library::default();
-        library.playlists = Loadable::Loaded(playlist_page(saved, 0, saved.len() as u32).items);
-        library.playlists_fetched_at =
-            Some(jiff::Timestamp::now().as_second() - fetched_hours_ago * 60 * 60);
+        let library = Library {
+            playlists: Loadable::Loaded(playlist_page(saved, 0, saved.len() as u32).items),
+            playlists_fetched_at: Some(
+                jiff::Timestamp::now().as_second() - fetched_hours_ago * 60 * 60,
+            ),
+            ..Library::default()
+        };
         app.handle_backend_events(vec![Event::HomeCache {
             account_id: "me".into(),
             cache: Some(crate::home_cache::Cache::capture(
