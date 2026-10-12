@@ -24,6 +24,12 @@ struct Cli {
     #[arg(short, long)]
     verbose: bool,
 
+    /// Start without a window and keep running when the window closes,
+    /// playing and serving the local API to a front end such as the Swift
+    /// app, which starts Spotlite this way.
+    #[arg(long)]
+    background: bool,
+
     /// Start with sample data and no Spotify connection (for screenshots).
     #[cfg(feature = "demo")]
     #[arg(long)]
@@ -476,6 +482,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     if load_themes {
         app.load_custom_themes(&waker);
     }
+    app.serve_in_background = cli.background;
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
         // Only the one running instance serves the API.
@@ -510,7 +517,9 @@ pub(crate) fn run() -> eframe::Result<()> {
     spotifast::window::set_fixed_size(demo_inner.is_some());
     #[cfg(feature = "demo")]
     let demo_storage = app.dirs.cache.join("demo-window.ron");
+    let background = cli.background;
     fastframe_shell::Shell::new(app, &waker)
+        .start_hidden(background)
         .idle(fastframe_tray::idle)
         .run(|lease| {
             #[cfg(windows)]

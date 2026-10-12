@@ -86,6 +86,23 @@ pub fn install(window: &impl HasWindowHandle) {
     });
 }
 
+/// Shows the app in the Dock and the app switcher, or keeps it out of
+/// them while it runs without a window.
+pub fn set_dock_icon(shown: bool) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let policy = if shown {
+        objc2_app_kit::NSApplicationActivationPolicy::Regular
+    } else {
+        objc2_app_kit::NSApplicationActivationPolicy::Accessory
+    };
+    let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+    if app.activationPolicy() != policy {
+        app.setActivationPolicy(policy);
+    }
+}
+
 /// winit's view, which the page is drawn in, for views laid over it.
 pub(crate) fn content_view() -> Option<Retained<NSView>> {
     GLASS.with(|glass| glass.borrow().as_ref().map(|glass| glass.content.clone()))

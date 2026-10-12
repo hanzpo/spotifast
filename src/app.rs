@@ -268,6 +268,9 @@ pub struct App {
     control_now_playing: Option<std::sync::Arc<std::sync::Mutex<String>>>,
     /// The same, for its `devices` verb.
     control_devices: Option<std::sync::Arc<std::sync::Mutex<String>>>,
+    /// Started with `--background` for a front end: no window at first, and
+    /// closing the window keeps the app running.
+    pub serve_in_background: bool,
     /// The local API front ends such as the Swift app drive (src/server.rs).
     #[cfg(unix)]
     api: Option<crate::server::Server>,
@@ -582,6 +585,11 @@ const TRAY_QUIT: &str = "quit";
 /// What the shell around `eframe::run_native` does with the app between
 /// windows.
 impl fastframe_shell::Resident for App {
+    /// Started for a front end, the app opens no window of its own.
+    fn start_hidden(&mut self) -> bool {
+        self.serve_in_background
+    }
+
     /// Quit wins; closing to the tray runs without a window.
     fn closed(&self) -> fastframe_shell::Closed {
         use fastframe_shell::Closed;
@@ -747,6 +755,7 @@ impl App {
             control_commands: None,
             control_now_playing: None,
             control_devices: None,
+            serve_in_background: false,
             #[cfg(unix)]
             api: None,
             #[cfg(unix)]
@@ -956,6 +965,8 @@ impl App {
     /// Per-window setup: fonts, icons, loaders, theme. Called every time a
     /// window is (re)created around this long-lived application state.
     pub fn attach(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "macos")]
+        crate::mac_glass::set_dock_icon(true);
         theme::install(ctx);
         ctx.add_bytes_loader(std::sync::Arc::new(self.backend.art().clone()));
         ctx.set_theme(self.theme_preference());
@@ -1022,6 +1033,12 @@ impl App {
     /// media controls keep running until Show or Quit.
     pub fn window_gone(&mut self) {
         self.window_hidden = true;
+        // Serving a front end without a window, the app keeps out of the
+        // Dock and the app switcher.
+        #[cfg(target_os = "macos")]
+        if self.serve_in_background {
+            crate::mac_glass::set_dock_icon(false);
+        }
         self.hide_intent = false;
         self.wants_show = false;
     }
@@ -1029,10 +1046,12 @@ impl App {
     /// Whether closing the window keeps the app in the tray rather than
     /// quitting.
     pub fn hides_to_tray(&self) -> bool {
-        self.tray
-            .as_ref()
-            .is_some_and(fastframe_tray::Tray::is_shown)
-            && self.settings.keep_playing_in_background
+        self.serve_in_background
+            || self
+                .tray
+                .as_ref()
+                .is_some_and(fastframe_tray::Tray::is_shown)
+                && self.settings.keep_playing_in_background
     }
 
     // ---- derived state -----------------------------------------------------
