@@ -1537,7 +1537,8 @@ impl App {
             "error": error,
             "page": Page::Radio(seed.to_string()).encode(),
             "kind": "Radio",
-            "title": name.map(|name| format!("{name} Radio")).unwrap_or_else(|| "Radio".into()),
+            // The engine names a radio already: "Rosewood Radio".
+            "title": name.unwrap_or_else(|| "Radio".into()),
             "facts": ["Radio", &format!("{} songs", uris.len())],
             "cover": pick_image(&images, COVER),
             "context": crate::util::station_uri(seed),
