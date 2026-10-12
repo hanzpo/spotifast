@@ -3485,6 +3485,36 @@ async fn handle(
         observe_playlists(api, &response);
         return (response, None);
     }
+    // The account's playlists come over the session where it can: the Web
+    // API lists them only from the shared app.
+    if let ApiRequest::MyPlaylists { offset, generation } = &request
+        && let Some(engine) = engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    {
+        let read = async {
+            let uris = library_uris(engine).await?;
+            session_reads::library_page(engine.session(), &uris, *offset, LIBRARY_PAGE_SIZE)
+                .await
+                .map_err(|failure| match failure {
+                    session_reads::Failure::Definitive(error) => anyhow::anyhow!("{error}"),
+                    session_reads::Failure::Retry(error) => error,
+                })
+        };
+        match tokio::time::timeout(SESSION_READ_TIMEOUT, read).await {
+            Ok(Ok(page)) => {
+                return (
+                    ApiResponse::MyPlaylists {
+                        offset: *offset,
+                        generation: *generation,
+                        result: Ok(page),
+                    },
+                    None,
+                );
+            }
+            Ok(Err(error)) => log::debug!("session library page failed: {error:#}"),
+            Err(_) => log::debug!("session library page timed out"),
+        }
+    }
     // An artist's similar artists come over the session where it can, as
     // its top songs below do: the Web API serves them only from the
     // shared app.
@@ -3952,6 +3982,40 @@ async fn handle(
     };
     observe_playlists(api, &response);
     (response, expired.get())
+}
+
+/// How many of the account's playlists a page of its list holds, as the
+/// Web API pages them.
+const LIBRARY_PAGE_SIZE: u32 = 50;
+
+/// The account's playlists in its own order, as the session lists them,
+/// read once for the pages of one load: a list read within the last
+/// minute stands.
+async fn library_uris(engine: &Engine) -> anyhow::Result<Vec<String>> {
+    static LISTED: std::sync::Mutex<Option<(Instant, String, Vec<String>)>> =
+        std::sync::Mutex::new(None);
+    let account = engine.session().username();
+    if let Ok(listed) = LISTED.lock()
+        && let Some((at, owner, uris)) = listed.as_ref()
+        && *owner == account
+        && at.elapsed() < Duration::from_secs(60)
+    {
+        return Ok(uris.clone());
+    }
+    let uris: Vec<String> = engine
+        .rootlist()
+        .await?
+        .entries
+        .into_iter()
+        .filter_map(|entry| match entry {
+            crate::player::RootlistEntry::Playlist(uri) => Some(uri),
+            _ => None,
+        })
+        .collect();
+    if let Ok(mut listed) = LISTED.lock() {
+        *listed = Some((Instant::now(), account, uris.clone()));
+    }
+    Ok(uris)
 }
 
 /// Playlists found by recent searches. Only the shared app searches

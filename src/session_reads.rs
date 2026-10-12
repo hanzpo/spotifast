@@ -84,6 +84,46 @@ pub async fn playlist(session: &Session, id: &str) -> Result<Playlist, Failure> 
     Ok(playlist)
 }
 
+/// A page of the account's playlists as the Web API's own list pages them,
+/// built over the session from its playlist list, `uris` in the account's
+/// order, and each playlist's header: the Web API's list is the shared
+/// app's alone. A playlist the list names but Spotify no longer has is
+/// left out; any other failure fails the page, for the Web API to answer.
+pub async fn library_page(
+    session: &Session,
+    uris: &[String],
+    offset: u32,
+    limit: u32,
+) -> Result<Page<Playlist>, Failure> {
+    let start = (offset as usize).min(uris.len());
+    let end = (start + limit as usize).min(uris.len());
+    let mut reads = tokio::task::JoinSet::new();
+    for (place, uri) in uris[start..end].iter().enumerate() {
+        let Some(id) = uri.strip_prefix("spotify:playlist:").map(str::to_string) else {
+            continue;
+        };
+        let session = session.clone();
+        reads.spawn(async move { (place, playlist(&session, &id).await) });
+    }
+    let mut found = Vec::new();
+    while let Some(joined) = reads.join_next().await {
+        let (place, read) = joined.map_err(|error| Failure::Retry(error.into()))?;
+        match read {
+            Ok(playlist) => found.push((place, playlist)),
+            Err(Failure::Definitive(_)) => {}
+            Err(failure) => return Err(failure),
+        }
+    }
+    found.sort_by_key(|(place, _)| *place);
+    Ok(Page {
+        items: found.into_iter().map(|(_, playlist)| playlist).collect(),
+        total: uris.len() as u32,
+        limit,
+        offset,
+        next: (end < uris.len()).then(|| "session".to_string()),
+    })
+}
+
 /// One page of a playlist's rows, as the Web API pages them.
 pub async fn items(
     session: &Session,
