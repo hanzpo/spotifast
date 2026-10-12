@@ -225,6 +225,57 @@ fn fingerprint(parts: impl Hash) -> u64 {
     hasher.finish()
 }
 
+/// A song as a client describes it: enough for the row it adds to show
+/// its name, artists, album and cover before Spotify confirms it.
+fn described_track(value: &Value) -> Option<PlayableItem> {
+    let uri = value.get("uri")?.as_str()?.to_string();
+    if !uri.starts_with("spotify:track:") {
+        return None;
+    }
+    let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
+    let artists = value
+        .get("artists")
+        .and_then(Value::as_array)
+        .map(|artists| {
+            artists
+                .iter()
+                .map(|artist| ArtistRef {
+                    id: artist.get("id").and_then(Value::as_str).map(str::to_string),
+                    name: artist.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    uri: None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let album = value.get("album").filter(|album| album.is_object()).map(|album| Album {
+        id: album.get("id").and_then(Value::as_str).unwrap_or_default().to_string(),
+        name: album.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+        images: text("image")
+            .map(|url| {
+                vec![crate::api::models::Image {
+                    url,
+                    ..Default::default()
+                }]
+            })
+            .unwrap_or_default(),
+        ..Default::default()
+    });
+    Some(PlayableItem::Track(Track {
+        id: uri.rsplit(':').next().map(str::to_string),
+        name: text("name").unwrap_or_default(),
+        duration_ms: value
+            .get("duration_ms")
+            .and_then(Value::as_u64)
+            .and_then(|ms| u32::try_from(ms).ok())
+            .unwrap_or_default(),
+        explicit: value.get("explicit").and_then(Value::as_bool).unwrap_or_default(),
+        artists,
+        album,
+        uri,
+        ..Default::default()
+    }))
+}
+
 /// Bare songs and episodes for actions that take items, built from URIs.
 fn items_from_uris(uris: &[String]) -> Vec<PlayableItem> {
     uris.iter()
@@ -823,12 +874,25 @@ impl App {
                     .and_then(|list| list.iter().find(|playlist| playlist.id == id))
                     .map(|playlist| playlist.name.clone())
                     .unwrap_or_default();
+                // Each song as the client describes it, or as this app has
+                // already shown it, so the row it adds is whole at once.
+                let mut items: Vec<PlayableItem> = params
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .map(|items| items.iter().filter_map(described_track).collect())
+                    .unwrap_or_default();
+                for uri in param_strings(params, "uris") {
+                    let item = self
+                        .known_song(&uri)
+                        .unwrap_or_else(|| items_from_uris(std::slice::from_ref(&uri)).remove(0));
+                    items.push(item);
+                }
                 // Songs already in the playlist go in again, as a client
                 // that asks to add them means.
                 self.actions.push(Action::ConfirmAddToPlaylist {
                     playlist_id: id,
                     playlist_name: name,
-                    items: items_from_uris(&param_strings(params, "uris")),
+                    items,
                     position: None,
                 });
                 ok()
