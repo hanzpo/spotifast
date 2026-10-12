@@ -87,7 +87,7 @@ final class AppModel {
         // For screenshots and debugging: the page and panel to start on.
         let environment = ProcessInfo.processInfo.environment
         if let page = environment["SPOTLITE_ROUTE"], let route = Route(page: page) {
-            if case .playlist = route { root = route } else if [.home, .search, .liked, .albums, .artists, .podcasts, .topSongs].contains(route) {
+            if case .playlist = route { root = route } else if [.home, .search, .liked, .albums, .artists, .podcasts, .episodes, .topSongs].contains(route) {
                 root = route
             } else {
                 path = [route]
@@ -219,9 +219,15 @@ final class AppModel {
 
     // MARK: Playback
 
-    func play(_ track: Track, in context: String?, tracks: [Track]? = nil) {
+    /// Plays a song from a list. A list `reordered` from its context's own
+    /// order, sorted or filtered, plays in the order shown.
+    func play(_ track: Track, in context: String?, tracks: [Track]? = nil, reordered: Bool = false) {
         var params: [String: Any] = ["uri": track.uri]
-        if let context, context.hasPrefix("spotify:station:") {
+        if let context, reordered, let tracks {
+            params["context"] = context
+            params["uris"] = tracks.map(\.uri)
+            params["index"] = tracks.firstIndex { $0.id == track.id } ?? 0
+        } else if let context, context.hasPrefix("spotify:station:") {
             // A radio plays the songs it shows, under the station's name.
             params["context"] = context
             params["uris"] = (tracks ?? [track]).map(\.uri)
@@ -426,6 +432,16 @@ final class AppModel {
         send(
             "playlist.remove",
             ["id": playlistID, "items": tracks.map { ["uri": $0.uri, "position": $0.position] }])
+        revision += 1
+    }
+
+    /// Moves a song one place up or down its playlist.
+    func move(_ track: Track, in playlistID: String, by step: Int) {
+        let from = track.position
+        // Spotify inserts before `to`, counted before the song leaves.
+        let to = step < 0 ? from - 1 : from + 2
+        guard to >= 0 else { return }
+        send("playlist.move", ["id": playlistID, "from": from, "to": to])
         revision += 1
     }
 

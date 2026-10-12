@@ -401,6 +401,7 @@ enum Route: Hashable, Sendable {
     case albums
     case artists
     case podcasts
+    case episodes
     case topSongs
     case playlist(String)
     case album(String)
@@ -418,6 +419,7 @@ enum Route: Hashable, Sendable {
         case .albums: "albums"
         case .artists: "artists"
         case .podcasts: "podcasts"
+        case .episodes: "episodes"
         case .topSongs: "top-songs"
         case .playlist(let id): "playlist:\(id)"
         case .album(let id): "album:\(id)"
@@ -437,6 +439,7 @@ enum Route: Hashable, Sendable {
         case ("albums", _): self = .albums
         case ("artists", _): self = .artists
         case ("podcasts", _): self = .podcasts
+        case ("episodes", _): self = .episodes
         case ("top-songs", _): self = .topSongs
         case ("playlist", let id?): self = .playlist(id)
         case ("album", let id?): self = .album(id)

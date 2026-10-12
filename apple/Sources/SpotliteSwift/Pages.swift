@@ -19,6 +19,7 @@ struct RouteView: View {
         case .albums: LibraryGrid(method: "library.albums", title: "Albums")
         case .artists: LibraryGrid(method: "library.artists", title: "Artists")
         case .podcasts: LibraryGrid(method: "library.shows", title: "Podcasts")
+        case .episodes: SongsView(method: "library.episodes", params: [:])
         }
     }
 }
@@ -66,6 +67,7 @@ struct SearchView: View {
     @Environment(AppModel.self) private var model
     @State private var results: SearchResults?
     @State private var scope = "All"
+    @State private var history: [String] = []
 
     private let scopes = ["All", "Songs", "Artists", "Albums", "Playlists", "Podcasts"]
 
@@ -73,10 +75,34 @@ struct SearchView: View {
         let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         PageScroll {
             if query.isEmpty {
-                ContentUnavailableView(
-                    "Search Spotify", systemImage: "magnifyingglass",
-                    description: Text("Find songs, artists, albums, playlists and podcasts."))
-                    .frame(maxWidth: .infinity, minHeight: 400)
+                if history.isEmpty {
+                    ContentUnavailableView(
+                        "Search Spotify", systemImage: "magnifyingglass",
+                        description: Text("Find songs, artists, albums, playlists and podcasts."))
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                } else {
+                    PageTitle(text: "Recent Searches")
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(history, id: \.self) { past in
+                            HStack {
+                                Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                                Button(past) { model.searchText = past }
+                                    .buttonStyle(.plain)
+                                Spacer()
+                                Button {
+                                    history.removeAll { $0 == past }
+                                    model.send("search.forget", ["query": past])
+                                } label: { Image(systemName: "xmark") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .help("Remove")
+                            }
+                            .padding(.vertical, 9)
+                            Divider()
+                        }
+                    }
+                    .frame(maxWidth: 520)
+                }
             } else {
                 Picker("Show", selection: $scope) {
                     ForEach(scopes, id: \.self) { Text($0) }
@@ -93,7 +119,14 @@ struct SearchView: View {
                 }
             }
         }
-        .task(id: query) { await search(query) }
+        .task(id: query) {
+            if query.isEmpty {
+                struct History: Decodable { var queries: [String] }
+                history = (try? await model.call("search.history", as: History.self))?.queries ?? []
+            } else {
+                await search(query)
+            }
+        }
     }
 
     @ViewBuilder
@@ -177,12 +210,13 @@ struct SongsView: View {
     var params: [String: String]
 
     @State private var filter = ""
+    @State private var sort: SongSort?
 
     var body: some View {
         Loader(method: method, params: params, loading: { $0.loading && ($0.tracks ?? []).isEmpty }) {
             (page: SongsPage, more: @escaping () -> Void) in
             let tracks = numbered(page.tracks ?? [])
-            let shown = filtered(tracks)
+            let shown = sort.map { $0.apply(filtered(tracks)) } ?? filtered(tracks)
             let playlistID = params["id"].flatMap { method == "playlist.get" ? $0 : nil }
             PageScroll {
                 PageHeader(
@@ -192,9 +226,12 @@ struct SongsView: View {
                     ownerRoute: page.ownerRoute.flatMap(Route.init(page:)),
                     facts: page.facts ?? [],
                     description: page.description,
-                    liked: method == "library.liked"
+                    glyph: method == "library.liked" ? "heart.fill"
+                        : method == "library.episodes" ? "bookmark.fill" : nil
                 ) {
-                    PlayButtons(context: page.context)
+                    if page.context != nil {
+                        PlayButtons(context: page.context)
+                    }
                     if let uri = page.uri, page.owned != true, method != "library.liked" {
                         Button {
                             model.toggleLibrary(uri: uri)
@@ -228,13 +265,27 @@ struct SongsView: View {
                         .frame(maxWidth: 260)
                         .padding(.bottom, 12)
                 }
-                SongList(
-                    tracks: shown,
-                    columns: columns(for: page),
-                    source: SongSource(
-                        context: filter.isEmpty ? page.context : nil,
-                        editablePlaylist: page.editable == true ? playlistID : nil),
-                    more: page.more == true && filter.isEmpty ? more : nil)
+                if method == "library.episodes" {
+                    VStack(spacing: 0) {
+                        ForEach(shown) { episode in
+                            EpisodeRow(episode: episode)
+                                .onAppear {
+                                    if episode.position == tracks.count - 1, page.more == true { more() }
+                                }
+                            Divider()
+                        }
+                    }
+                } else {
+                    SongList(
+                        tracks: shown,
+                        columns: columns(for: page),
+                        source: SongSource(
+                            context: page.context,
+                            editablePlaylist: page.editable == true ? playlistID : nil,
+                            reordered: sort != nil || !filter.isEmpty),
+                        more: page.more == true && filter.isEmpty ? more : nil,
+                        sort: method == "album.get" ? nil : $sort)
+                }
                 LoadingFooter(loading: page.loading, error: page.error)
                 if !page.loading, tracks.isEmpty, page.error == nil {
                     ContentUnavailableView("Nothing here yet", systemImage: "music.note.list")

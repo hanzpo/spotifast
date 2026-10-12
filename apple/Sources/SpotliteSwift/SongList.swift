@@ -21,6 +21,32 @@ struct SongSource {
     var context: String?
     /// A playlist the account can edit, so songs can be taken out of it.
     var editablePlaylist: String?
+    /// The list is sorted or filtered: it plays in the order shown, and
+    /// its songs cannot move up or down the playlist.
+    var reordered = false
+}
+
+/// A column the list is sorted by.
+struct SongSort: Equatable {
+    enum Column { case title, artist, album, added, duration }
+    var column: Column
+    var ascending = true
+
+    func apply(_ tracks: [Track]) -> [Track] {
+        let sorted = tracks.sorted { a, b in
+            switch column {
+            case .title: a.name.localizedStandardCompare(b.name) == .orderedAscending
+            case .artist: a.artistNames.localizedStandardCompare(b.artistNames) == .orderedAscending
+            case .album:
+                a.albumName == b.albumName
+                    ? (a.trackNumber ?? 0) < (b.trackNumber ?? 0)
+                    : a.albumName.localizedStandardCompare(b.albumName) == .orderedAscending
+            case .added: (a.addedAt ?? "") < (b.addedAt ?? "")
+            case .duration: a.durationMs < b.durationMs
+            }
+        }
+        return ascending ? sorted : sorted.reversed()
+    }
 }
 
 /// Music's song list: a heading row and the songs on alternating stripes.
@@ -31,6 +57,8 @@ struct SongList: View {
     var columns: SongColumns = .plain
     var source = SongSource()
     var more: (() -> Void)?
+    /// When set, the headings sort the list.
+    var sort: Binding<SongSort?>?
 
     @State private var selection: Set<Track.ID> = []
     @State private var anchor: Track.ID?
@@ -38,7 +66,7 @@ struct SongList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            SongHeader(columns: columns)
+            SongHeader(columns: columns, sort: sort)
             ForEach(tracks) { track in
                 SongRow(
                     track: track,
@@ -74,7 +102,7 @@ struct SongList: View {
 
     private func play(_ track: Track) {
         guard track.playable != false else { return }
-        model.play(track, in: source.context, tracks: tracks)
+        model.play(track, in: source.context, tracks: tracks, reordered: source.reordered)
     }
 
     private func pick(_ track: Track) {
@@ -129,25 +157,28 @@ private enum Widths {
 
 struct SongHeader: View {
     var columns: SongColumns
+    var sort: Binding<SongSort?>?
 
     var body: some View {
         HStack(spacing: 12) {
-            if columns.contains(.number) { Text("#").frame(width: Widths.number) }
-            Text("Title").frame(maxWidth: .infinity, alignment: .leading)
+            if columns.contains(.number) {
+                heading("#", nil).frame(width: Widths.number)
+            }
+            heading("Title", .title).frame(maxWidth: .infinity, alignment: .leading)
             if columns.contains(.album) {
-                Text("Album").frame(maxWidth: .infinity, alignment: .leading)
+                heading("Album", .album).frame(maxWidth: .infinity, alignment: .leading)
             }
             if columns.contains(.addedBy) {
                 Text("Added By").frame(width: Widths.addedBy, alignment: .leading)
             }
             if columns.contains(.added) {
-                Text("Date Added").frame(width: Widths.added, alignment: .leading)
+                heading("Date Added", .added).frame(width: Widths.added, alignment: .leading)
             }
             if columns.contains(.date) {
                 Text("Date").frame(width: Widths.added, alignment: .leading)
             }
             Color.clear.frame(width: Widths.heart)
-            Text("Time").frame(width: Widths.time, alignment: .trailing)
+            heading("Time", .duration).frame(width: Widths.time, alignment: .trailing)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
@@ -155,6 +186,42 @@ struct SongHeader: View {
         .padding(.vertical, 6)
         .overlay(alignment: .bottom) { Divider() }
         .padding(.bottom, 4)
+    }
+
+    /// A heading that sorts by its column: once ascending, again
+    /// descending, a third time back to the list's own order. `#` always
+    /// goes back to that order.
+    @ViewBuilder
+    private func heading(_ title: String, _ column: SongSort.Column?) -> some View {
+        if let sort {
+            Button {
+                guard let column else {
+                    sort.wrappedValue = nil
+                    return
+                }
+                switch sort.wrappedValue {
+                case let current? where current.column == column && current.ascending:
+                    sort.wrappedValue = SongSort(column: column, ascending: false)
+                case let current? where current.column == column:
+                    sort.wrappedValue = nil
+                default:
+                    sort.wrappedValue = SongSort(column: column)
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(title)
+                    if let current = sort.wrappedValue, current.column == column {
+                        Image(systemName: current.ascending ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.bold))
+                    }
+                }
+                .foregroundStyle(sort.wrappedValue?.column == column && column != nil
+                    ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(title)
+        }
     }
 }
 
@@ -323,6 +390,11 @@ struct SongMenu: View {
             }
         }
         if let playlist = source.editablePlaylist {
+            if let first, tracks.count == 1, !source.reordered {
+                Button("Move Up") { model.move(first, in: playlist, by: -1) }
+                    .disabled(first.position == 0)
+                Button("Move Down") { model.move(first, in: playlist, by: 1) }
+            }
             Button("Remove from This Playlist") { model.remove(tracks, from: playlist) }
         }
         if let first, tracks.count == 1, !first.isEpisode {

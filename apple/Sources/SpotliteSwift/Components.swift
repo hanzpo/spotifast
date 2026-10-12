@@ -64,6 +64,7 @@ struct Loader<Value: Decodable & Sendable, Content: View>: View {
         case "library.albums": "albums"
         case "library.artists": "artists"
         case "library.shows": "podcasts"
+        case "library.episodes": "episodes"
         case "playlist.get": params["id"].map { "playlist:\($0)" }
         case "album.get": params["id"].map { "album:\($0)" }
         case "show.get": params["id"].map { "show:\($0)" }
@@ -202,7 +203,8 @@ struct PageHeader<Actions: View>: View {
     var facts: [String] = []
     var description: String?
     var round = false
-    var liked = false
+    /// A library list's own cover: a symbol on the accent.
+    var glyph: String?
     @ViewBuilder var actions: Actions
 
     var body: some View {
@@ -218,8 +220,8 @@ struct PageHeader<Actions: View>: View {
     private func layout(cover size: CGFloat, compact: Bool) -> some View {
         HStack(alignment: .bottom, spacing: compact ? 20 : 28) {
             Group {
-                if liked {
-                    LikedCover(size: size)
+                if let glyph {
+                    LikedCover(size: size, symbol: glyph)
                 } else {
                     Artwork(url: cover, size: size, radius: 10,
                             placeholder: round ? "person.fill" : "music.note", circle: round)
@@ -288,13 +290,14 @@ struct PlayButtons: View {
 
 struct LikedCover: View {
     var size: CGFloat
+    var symbol = "heart.fill"
 
     var body: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
             .fill(LinearGradient(
                 colors: [.accentColor, .accentColor.opacity(0.55)],
                 startPoint: .topLeading, endPoint: .bottomTrailing))
-            .overlay(Image(systemName: "heart.fill")
+            .overlay(Image(systemName: symbol)
                 .font(.system(size: size / 3))
                 .foregroundStyle(.white))
             .frame(width: size, height: size)

@@ -27,9 +27,16 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         window.title = "Spotlite"
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: ContentView()
-            .environment(model)
-            .task { await model.connect() })
+        // SPOTLITE_PROBE_VIEW=settings draws the Settings window instead.
+        if ProcessInfo.processInfo.environment["SPOTLITE_PROBE_VIEW"] == "settings" {
+            window.contentView = NSHostingView(rootView: SettingsView()
+                .environment(model)
+                .task { await model.connect() })
+        } else {
+            window.contentView = NSHostingView(rootView: ContentView()
+                .environment(model)
+                .task { await model.connect() })
+        }
         // On the screen, so the window server draws it, glass and all, but
         // beneath the desktop picture, out of the switcher and Mission
         // Control, and deaf to the mouse.

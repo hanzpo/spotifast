@@ -114,6 +114,7 @@ struct Shell: View {
         case .albums: "Albums"
         case .artists: "Artists"
         case .podcasts: "Podcasts"
+        case .episodes: "Your Episodes"
         case .topSongs: "Top Songs"
         case .playlist(let id): model.playlists.first { $0.id == id }?.name ?? "Playlist"
         case .album: "Album"
@@ -146,6 +147,7 @@ struct Sidebar: View {
                 Label("Albums", systemImage: "square.stack").tag(Route.albums)
                 Label("Artists", systemImage: "music.microphone").tag(Route.artists)
                 Label("Podcasts", systemImage: "dot.radiowaves.left.and.right").tag(Route.podcasts)
+                Label("Episodes", systemImage: "bookmark").tag(Route.episodes)
                 Label("Top Songs", systemImage: "chart.line.uptrend.xyaxis").tag(Route.topSongs)
             }
             Section {
