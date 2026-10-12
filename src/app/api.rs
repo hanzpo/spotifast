@@ -241,25 +241,40 @@ fn described_track(value: &Value) -> Option<PlayableItem> {
                 .iter()
                 .map(|artist| ArtistRef {
                     id: artist.get("id").and_then(Value::as_str).map(str::to_string),
-                    name: artist.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    name: artist
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     uri: None,
                 })
                 .collect()
         })
         .unwrap_or_default();
-    let album = value.get("album").filter(|album| album.is_object()).map(|album| Album {
-        id: album.get("id").and_then(Value::as_str).unwrap_or_default().to_string(),
-        name: album.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
-        images: text("image")
-            .map(|url| {
-                vec![crate::api::models::Image {
-                    url,
-                    ..Default::default()
-                }]
-            })
-            .unwrap_or_default(),
-        ..Default::default()
-    });
+    let album = value
+        .get("album")
+        .filter(|album| album.is_object())
+        .map(|album| Album {
+            id: album
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            name: album
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            images: text("image")
+                .map(|url| {
+                    vec![crate::api::models::Image {
+                        url,
+                        ..Default::default()
+                    }]
+                })
+                .unwrap_or_default(),
+            ..Default::default()
+        });
     Some(PlayableItem::Track(Track {
         id: uri.rsplit(':').next().map(str::to_string),
         name: text("name").unwrap_or_default(),
@@ -268,7 +283,10 @@ fn described_track(value: &Value) -> Option<PlayableItem> {
             .and_then(Value::as_u64)
             .and_then(|ms| u32::try_from(ms).ok())
             .unwrap_or_default(),
-        explicit: value.get("explicit").and_then(Value::as_bool).unwrap_or_default(),
+        explicit: value
+            .get("explicit")
+            .and_then(Value::as_bool)
+            .unwrap_or_default(),
         artists,
         album,
         uri,
@@ -691,8 +709,10 @@ impl App {
             "library.playlists" => {
                 // Asking again retries a load that failed, such as one
                 // Spotify rate limited.
-                if matches!(self.library.playlists, Loadable::NotLoaded | Loadable::Failed(_))
-                    && self.is_connected()
+                if matches!(
+                    self.library.playlists,
+                    Loadable::NotLoaded | Loadable::Failed(_)
+                ) && self.is_connected()
                 {
                     self.load_playlists();
                 }

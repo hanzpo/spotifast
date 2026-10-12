@@ -5241,15 +5241,32 @@ impl App {
                             playlists.insert(0, playlist.clone());
                         }
                         self.saved.insert(playlist.uri.clone(), true);
+                        // A new playlist is empty: its page starts loaded, so
+                        // the songs it was made with show the moment they are
+                        // added, instead of an empty copy fetched before they
+                        // land.
+                        self.load_generation += 1;
+                        let page = self.playlist_pages.entry(playlist.id.clone()).or_default();
+                        page.generation = self.load_generation;
+                        page.items_generation = self.load_generation;
+                        page.playlist = Loadable::Loaded(playlist.clone());
+                        page.items.loaded_once = true;
+                        page.items.total = Some(0);
+                        page.items.next_offset = None;
+                        page.cache_checked = true;
                         if let Some(Dialog::CreatePlaylist { add_uris, .. }) = self.dialog.take()
                             && !add_uris.is_empty()
                         {
-                            self.backend.api(ApiRequest::AddToPlaylist {
-                                playlist_id: playlist.id.clone(),
-                                playlist_name: playlist.name.clone(),
-                                uris: add_uris,
-                                position: None,
-                            });
+                            let items = add_uris
+                                .iter()
+                                .map(|uri| self.known_song(uri).unwrap_or_else(|| bare_item(uri)))
+                                .collect();
+                            self.add_to_playlist_now(
+                                playlist.id.clone(),
+                                playlist.name.clone(),
+                                items,
+                                None,
+                            );
                         }
                         self.open(Page::Playlist(playlist.id));
                     }
@@ -9938,6 +9955,25 @@ fn cover_error(locale: Locale, error: &crate::api::client::ApiError) -> String {
 mod api;
 mod radio;
 
+/// A song or an episode known only by its URI, for a row Spotify fills in
+/// once it answers.
+fn bare_item(uri: &str) -> PlayableItem {
+    let id = uri.rsplit(':').next().unwrap_or_default().to_string();
+    if uri.starts_with("spotify:episode:") {
+        PlayableItem::Episode(crate::api::models::Episode {
+            uri: uri.to_string(),
+            id,
+            ..Default::default()
+        })
+    } else {
+        PlayableItem::Track(Track {
+            uri: uri.to_string(),
+            id: Some(id),
+            ..Default::default()
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -10929,6 +10965,43 @@ mod tests {
 
     fn playlist_ids(ids: &[&str]) -> Option<Vec<String>> {
         Some(ids.iter().map(|id| (*id).to_string()).collect())
+    }
+
+    /// A playlist made with songs shows them on its page at once: the
+    /// page used to fetch an empty copy before the songs landed and kept it.
+    #[test]
+    fn a_new_playlist_shows_the_songs_it_was_made_with() {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        let ctx = egui::Context::default();
+        app.apply(
+            Action::CreatePlaylist {
+                name: "Fresh".into(),
+                public: false,
+                add_uris: vec!["spotify:track:one".into(), "spotify:track:two".into()],
+            },
+            &ctx,
+        );
+        app.handle_api(ApiResponse::PlaylistCreated(Ok(Playlist {
+            id: "fresh".into(),
+            name: "Fresh".into(),
+            uri: "spotify:playlist:fresh".into(),
+            ..Default::default()
+        })));
+        let page = &app.playlist_pages["fresh"];
+        let uris: Vec<&str> = page
+            .items
+            .items
+            .iter()
+            .filter_map(|entry| entry.playable().map(PlayableItem::uri))
+            .collect();
+        assert_eq!(uris, ["spotify:track:one", "spotify:track:two"]);
+        assert_eq!(page.items.total, Some(2));
+        assert!(
+            !page.items.loading,
+            "nothing fetches an empty copy over them"
+        );
+        assert_eq!(app.page(), &Page::Playlist("fresh".into()));
     }
 
     /// Following, unfollowing or editing a playlist reads the library's
