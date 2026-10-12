@@ -123,6 +123,8 @@ pub enum Page {
     /// Spotify's radio seeded by a song, playlist, album, or artist, by the
     /// seed's URI.
     Radio(String),
+    /// Someone's profile, by user id.
+    User(String),
     Queue,
     Settings,
 }
@@ -143,6 +145,7 @@ impl Page {
             Page::Artist(id) => format!("artist:{id}"),
             Page::Show(id) => format!("show:{id}"),
             Page::Radio(seed) => format!("radio:{seed}"),
+            Page::User(id) => format!("user:{id}"),
             Page::Queue => "queue".into(),
             Page::Settings => "settings".into(),
         }
@@ -168,6 +171,7 @@ impl Page {
                     "artist" => Page::Artist(id.into()),
                     "show" => Page::Show(id.into()),
                     "radio" if crate::util::station_uri(id).is_some() => Page::Radio(id.into()),
+                    "user" if !id.is_empty() => Page::User(id.into()),
                     _ => return None,
                 }
             }
@@ -185,6 +189,9 @@ impl Page {
             "album" => Page::Album(id),
             "artist" => Page::Artist(id),
             "show" => Page::Show(id),
+            // Not `spotify:user:<id>:collection`, Liked Songs, or an old
+            // `spotify:user:<id>:playlist:<id>`.
+            "user" if !id.is_empty() && parts.next().is_none() => Page::User(id),
             _ => return None,
         })
     }
@@ -846,6 +853,12 @@ pub struct RadioPage {
     pub refreshing: bool,
 }
 
+/// Someone's profile page.
+#[derive(Default)]
+pub struct UserPage {
+    pub profile: Loadable<crate::api::models::UserProfile>,
+}
+
 #[derive(Default)]
 pub struct ShowPage {
     pub show: Loadable<Show>,
@@ -1320,5 +1333,25 @@ mod finite_scroll_tests {
         assert_eq!(list.window_at(150, 50), None);
         list.fail("offline".into());
         assert_eq!(list.window_at(150, 50), None);
+    }
+}
+
+#[cfg(test)]
+mod page_tests {
+    use super::*;
+
+    #[test]
+    fn a_profile_page_survives_encoding_and_opens_from_its_uri() {
+        let page = Page::User("hanz-id".into());
+        assert_eq!(Page::decode(&page.encode()), Some(page.clone()));
+        assert_eq!(Page::decode("user:"), None);
+        assert_eq!(Page::from_uri("spotify:user:hanz-id"), Some(page));
+        assert_eq!(Page::from_uri("spotify:user:"), None);
+        // Liked Songs and old-style playlist URIs are not profiles.
+        assert_eq!(Page::from_uri("spotify:user:hanz-id:collection"), None);
+        assert_eq!(
+            Page::from_uri("spotify:user:hanz-id:playlist:2G7Xnp3UclMAhqfpHuvlgy"),
+            None
+        );
     }
 }

@@ -65,6 +65,8 @@ clients. Spotifast uses its session for:
   play, it is skipped when reached, as it would be anywhere else.
 - **Lyrics** when Spotify has them.
 - **Display names** for the user IDs attached to songs in a playlist.
+- **Profiles:** a person's name, picture, follower count and the public
+  playlists on their profile, for the page a playlist's owner opens.
 - **Precise EP types** for releases that the Web API groups with singles.
 - **Radio and autoplay** through Spotify's context resolver: stations seeded
   by a song, playlist, album, or artist. Each resolution is a fresh mix of 50

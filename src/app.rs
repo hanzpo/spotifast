@@ -357,6 +357,8 @@ pub struct App {
     pub album_pages: HashMap<String, AlbumPage>,
     pub artist_pages: HashMap<String, ArtistPage>,
     pub show_pages: HashMap<String, ShowPage>,
+    /// Profile pages by user id.
+    pub user_pages: HashMap<String, UserPage>,
     /// Radio pages by the seed's URI.
     pub radio_pages: HashMap<String, RadioPage>,
     pub track_cache: HashMap<String, Track>,
@@ -807,6 +809,7 @@ impl App {
             album_pages: HashMap::new(),
             artist_pages: HashMap::new(),
             show_pages: HashMap::new(),
+            user_pages: HashMap::new(),
             radio_pages: HashMap::new(),
             track_cache: HashMap::new(),
             track_requests: HashSet::new(),
@@ -1548,6 +1551,27 @@ impl App {
         }
     }
 
+    /// A profile arrived. Its name also names the user wherever their id
+    /// shows, as the adder of a song or a playlist's owner.
+    fn receive_user_profile(
+        &mut self,
+        id: String,
+        result: Result<crate::api::models::UserProfile, String>,
+    ) {
+        let profile = match result {
+            Ok(profile) => {
+                if profile.name != id {
+                    self.set_user_name(id.clone(), Some(profile.name.clone()));
+                }
+                Loadable::Loaded(profile)
+            }
+            Err(error) => Loadable::Failed(error),
+        };
+        if let Some(page) = self.user_pages.get_mut(&id) {
+            page.profile = profile;
+        }
+    }
+
     pub fn any_play_pending(&self) -> bool {
         self.pending_fresh() && !self.pending_play_keys.is_empty()
     }
@@ -1905,6 +1929,7 @@ impl App {
                 Event::UserName { id, name } => {
                     self.set_user_name(id, name);
                 }
+                Event::UserProfile { id, result } => self.receive_user_profile(id, result),
                 Event::AudiobookShows(uris) => {
                     self.audiobook_shows.extend(uris);
                 }
@@ -3401,6 +3426,13 @@ impl App {
                 self.request_contains(vec![format!("spotify:show:{id}")]);
             }
             Page::Radio(seed) => self.load_radio(&seed),
+            Page::User(id) => {
+                let page = self.user_pages.entry(id.clone()).or_default();
+                if page.profile.needs_load() {
+                    page.profile = Loadable::Loading;
+                    self.backend.send(Command::UserProfile(id));
+                }
+            }
             Page::Queue => self.refresh_queue(true),
             Page::Settings => {}
         }
@@ -3846,6 +3878,9 @@ impl App {
             }
             Page::Show(id) => {
                 self.show_pages.remove(id);
+            }
+            Page::User(id) => {
+                self.user_pages.remove(id);
             }
             Page::Radio(seed) => {
                 // A new mix replaces the songs on screen when it arrives.
@@ -6045,6 +6080,7 @@ impl App {
         const MAX_ARTIST_PAGES: usize = 10;
         const MAX_SHOW_PAGES: usize = 8;
         const MAX_RADIO_PAGES: usize = 6;
+        const MAX_USER_PAGES: usize = 6;
         const MAX_TRACK_CACHE: usize = 800;
 
         let mut protected_playlists = HashSet::new();
@@ -6057,6 +6093,7 @@ impl App {
         let mut protected_artists = HashSet::new();
         let mut protected_shows = HashSet::new();
         let mut protected_radios = HashSet::new();
+        let mut protected_users = HashSet::new();
         if let Some(seed) = self
             .playing_context_uri()
             .and_then(|uri| util::station_seed(&uri))
@@ -6078,6 +6115,9 @@ impl App {
             }
             Page::Radio(seed) => {
                 protected_radios.insert(seed.clone());
+            }
+            Page::User(id) => {
+                protected_users.insert(id.clone());
             }
             _ => {}
         }
@@ -6136,12 +6176,20 @@ impl App {
             &protected_radios,
             MAX_RADIO_PAGES,
         );
+        evict_lru_map(
+            &mut self.user_pages,
+            &self.page_used,
+            |id| Page::User(id.to_string()),
+            &protected_users,
+            MAX_USER_PAGES,
+        );
         self.page_used.retain(|page, _| match page {
             Page::Playlist(id) => self.playlist_pages.contains_key(id),
             Page::Album(id) => self.album_pages.contains_key(id),
             Page::Artist(id) => self.artist_pages.contains_key(id),
             Page::Show(id) => self.show_pages.contains_key(id),
             Page::Radio(seed) => self.radio_pages.contains_key(seed),
+            Page::User(id) => self.user_pages.contains_key(id),
             _ => true,
         });
         if self.track_cache.len() > MAX_TRACK_CACHE {
@@ -14355,6 +14403,43 @@ mod tests {
         );
         app.reveal_theme_changes = false;
         app
+    }
+
+    /// Opening a profile asks for it once; its answer fills the page and
+    /// names the user wherever their id shows.
+    #[test]
+    fn a_profile_fills_its_page_and_names_its_user() {
+        let ctx = egui::Context::default();
+        let mut app = test_app("user-profile");
+        app.auth = AuthStatus::Connected {
+            username: "test".into(),
+        };
+        app.apply(Action::Open(Page::User("hanz-id".into())), &ctx);
+        assert_eq!(app.page(), &Page::User("hanz-id".into()));
+        assert!(matches!(
+            app.user_pages["hanz-id"].profile,
+            Loadable::Loading
+        ));
+        app.receive_user_profile(
+            "hanz-id".into(),
+            Ok(crate::api::models::UserProfile {
+                id: "hanz-id".into(),
+                name: "hanz".into(),
+                ..Default::default()
+            }),
+        );
+        assert!(matches!(
+            &app.user_pages["hanz-id"].profile,
+            Loadable::Loaded(profile) if profile.name == "hanz"
+        ));
+        assert_eq!(app.user_names.get("hanz-id"), Some(&Some("hanz".into())));
+
+        app.receive_user_profile("gone".into(), Err("missing".into()));
+        assert!(
+            !app.user_pages.contains_key("gone"),
+            "no page, nothing kept"
+        );
+        app.backend.shutdown();
     }
 
     /// Two lookups of one adder can overlap; the one that found nothing

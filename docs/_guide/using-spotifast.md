@@ -426,6 +426,13 @@ after the radio with the songs on the page.
 Radio comes from Spotify's playback service, so it needs playback on this
 computer to be set up; the page can then play on any device.
 
+## Profiles
+
+Click the owner's name under a playlist's title, or your own name under Liked
+Songs, to open that person's profile: their picture, follower count and the
+public playlists they show on it. Profiles come from Spotify's playback
+service, so like radio they need playback on this computer to be set up.
+
 ## Playlist covers
 
 **In development, not included in 0.8.0:** open a playlist you own and choose

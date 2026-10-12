@@ -1442,7 +1442,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             let owner_id = playlist.owner.id.as_deref();
             let others = other_adders(owner_id, &page.contributors, &user_id);
             let made_together = playlist.collaborative || !others.is_empty();
-            let mut byline = vec![(playlist.owner_name().to_string(), None)];
+            let mut byline = vec![owner_byline(playlist)];
             if !others.is_empty() {
                 let named: Vec<String> = others
                     .iter()
@@ -1716,12 +1716,23 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
 
 fn playlist_loading_hero(app: &mut App, ui: &mut egui::Ui, playlist: &Playlist) {
     let images = hero_images(&playlist.images, None, false);
-    let mut byline = vec![(playlist.owner_name().to_string(), None)];
+    let mut byline = vec![owner_byline(playlist)];
     let count = playlist.track_total();
     if count > 0 {
         byline.push((song_count(app.locale, count), None));
     }
     playlist_hero(app, ui, playlist, images, byline, playlist.collaborative);
+}
+
+/// The owner's name, which opens their profile.
+fn owner_byline(playlist: &Playlist) -> (String, Option<Page>) {
+    let profile = playlist
+        .owner
+        .id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .map(|id| Page::User(id.to_string()));
+    (playlist.owner_name().to_string(), profile)
 }
 
 fn playlist_hero<'a>(
@@ -1902,10 +1913,15 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             remember_table_items(app, Page::LikedSongs, revision, revision, names, rows)
         };
     let total = app.library.liked.total.unwrap_or(items.len() as u32);
-    let user = app
+    let (user, profile) = app
         .user
         .as_ref()
-        .map(|user| user.name().to_string())
+        .map(|user| {
+            (
+                user.name().to_string(),
+                (!user.id.is_empty()).then(|| Page::User(user.id.clone())),
+            )
+        })
         .unwrap_or_default();
     let locale = app.locale;
     let count_text = if app.library.liked.is_complete() {
@@ -1923,7 +1939,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             kind: gettext(locale, "Playlist"),
             title: &liked_title,
             description: None,
-            byline: vec![(user, None), (count_text, None)],
+            byline: vec![(user, profile), (count_text, None)],
             round: false,
         },
     );

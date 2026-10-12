@@ -24,10 +24,15 @@ use protobuf::{EnumOrUnknown, Message as _};
 use crate::api::ApiError;
 use crate::api::models::{
     Album, ArtistRef, Episode, Image, Owner, Page, PlayableItem, Playlist, PlaylistItem, Show,
-    Track, TrackCount, UserRef,
+    Track, TrackCount, UserProfile, UserRef,
 };
 
 const IMAGE_HOST: &str = "https://i.scdn.co/image/";
+const MOSAIC_HOST: &str = "https://mosaic.scdn.co/640/";
+
+/// The most playlists a profile page asks for. Spotify's own profile shows
+/// far fewer; a person's rarely reaches it.
+const PROFILE_PLAYLISTS: u32 = 200;
 
 /// Why the session could not answer a read.
 #[derive(Debug)]
@@ -258,6 +263,83 @@ pub async fn user_display_name(session: &Session, user_id: &str) -> Option<Strin
     json.get("name")
         .and_then(|value| value.as_str())
         .map(str::to_string)
+}
+
+/// Someone's profile and the public playlists on it, from the profile view
+/// Spotify's clients read.
+pub async fn user_profile(session: &Session, user_id: &str) -> Result<UserProfile, Failure> {
+    let bytes = session
+        .spclient()
+        .get_user_profile(user_id, Some(PROFILE_PLAYLISTS), Some(0))
+        .await
+        .map_err(refused)?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|error| Failure::Retry(error.into()))?;
+    Ok(profile(user_id, &json))
+}
+
+fn profile(user_id: &str, json: &serde_json::Value) -> UserProfile {
+    let text = |value: &serde_json::Value, key: &str| {
+        value
+            .get(key)
+            .and_then(|value| value.as_str())
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+    };
+    let picture = |value: &serde_json::Value| {
+        text(value, "image_url")
+            .and_then(|url| image_url(&url).or_else(|| mosaic_url(&url)))
+            .map(|url| Image {
+                url,
+                width: None,
+                height: None,
+            })
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    let playlists = json
+        .get("public_playlists")
+        .and_then(|lists| lists.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|list| {
+            let uri = text(list, "uri")?;
+            let id = uri.strip_prefix("spotify:playlist:")?.to_string();
+            let owner = text(list, "owner_uri")
+                .and_then(|owner| owner.strip_prefix("spotify:user:").map(str::to_string));
+            Some(Playlist {
+                id,
+                name: text(list, "name").unwrap_or_default(),
+                uri,
+                images: picture(list),
+                owner: Owner {
+                    uri: owner.as_ref().map(|owner| format!("spotify:user:{owner}")),
+                    id: owner,
+                    display_name: text(list, "owner_name"),
+                },
+                public: Some(true),
+                ..Default::default()
+            })
+        })
+        .collect();
+    UserProfile {
+        id: user_id.to_string(),
+        name: text(json, "name").unwrap_or_else(|| user_id.to_string()),
+        images: picture(json),
+        followers: json.get("followers_count").and_then(|count| count.as_u64()),
+        playlists,
+    }
+}
+
+/// A playlist without a cover of its own names the four album covers its
+/// mosaic is made of; Spotify's mosaic host composes them.
+fn mosaic_url(reference: &str) -> Option<String> {
+    let tiles: Vec<&str> = reference
+        .strip_prefix("spotify:mosaic:")?
+        .split(':')
+        .filter(|tile| !tile.is_empty())
+        .collect();
+    (!tiles.is_empty()).then(|| format!("{MOSAIC_HOST}{}", tiles.concat()))
 }
 
 /// The list's header and the `length` rows from `from`; none for the header
@@ -627,6 +709,57 @@ mod tests {
     use librespot_protocol::playlist4_external::{Item, SelectedListContent};
 
     use super::*;
+
+    /// The profile view's own shape, as Spotify answered it.
+    #[test]
+    fn a_profile_reads_its_name_picture_and_public_playlists() {
+        let json = serde_json::json!({
+            "name": "hanz",
+            "image_url": "https://i.scdn.co/image/ab67757",
+            "followers_count": 44,
+            "public_playlists": [
+                {
+                    "image_url": "spotify:mosaic:aa01:bb02:cc03:dd04",
+                    "name": "Sure Thing",
+                    "owner_name": "hanz",
+                    "owner_uri": "spotify:user:hanz-id",
+                    "uri": "spotify:playlist:2G7Xnp3UclMAhqfpHuvlgy"
+                },
+                {
+                    "image_url": "https://i.scdn.co/image/ab67706f",
+                    "name": "Today's Top Hits",
+                    "owner_name": "Spotify",
+                    "owner_uri": "spotify:user:spotify",
+                    "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+                },
+                { "name": "No uri, no row" }
+            ]
+        });
+        let profile = profile("hanz-id", &json);
+        assert_eq!(profile.name, "hanz");
+        assert_eq!(profile.followers, Some(44));
+        assert_eq!(profile.images[0].url, "https://i.scdn.co/image/ab67757");
+        assert_eq!(profile.playlists.len(), 2);
+        let mine = &profile.playlists[0];
+        assert_eq!(mine.id, "2G7Xnp3UclMAhqfpHuvlgy");
+        assert_eq!(mine.owner.id.as_deref(), Some("hanz-id"));
+        assert_eq!(mine.owner_name(), "hanz");
+        assert_eq!(
+            mine.images[0].url,
+            "https://mosaic.scdn.co/640/aa01bb02cc03dd04"
+        );
+        assert_eq!(
+            profile.playlists[1].images[0].url,
+            "https://i.scdn.co/image/ab67706f"
+        );
+    }
+
+    #[test]
+    fn a_profile_without_a_name_is_shown_by_its_id() {
+        let profile = profile("someone", &serde_json::json!({}));
+        assert_eq!(profile.name, "someone");
+        assert!(profile.images.is_empty() && profile.playlists.is_empty());
+    }
 
     const TRACK: &str = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
     const EPISODE: &str = "spotify:episode:7GhIk7Il098yCjg4BQjzvb";

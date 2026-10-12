@@ -19,6 +19,7 @@ pub mod settings;
 pub mod show;
 pub mod sidebar;
 pub mod topbar;
+pub mod user;
 pub mod widgets;
 
 use egui::{Align2, Color32, Context, CornerRadius, Frame, Id, Margin, Rect, Stroke, vec2};
@@ -253,6 +254,7 @@ fn central(app: &mut App, ui: &mut egui::Ui) -> Rect {
                                 Page::Artist(id) => artist::show(app, ui, &id),
                                 Page::Show(id) => show::show(app, ui, &id),
                                 Page::Radio(seed) => radio::radio(app, ui, &seed),
+                                Page::User(id) => user::show(app, ui, &id),
                                 Page::Queue => queue::page(app, ui),
                                 Page::Settings => settings::show(app, ui),
                             }

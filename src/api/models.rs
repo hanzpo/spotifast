@@ -793,6 +793,17 @@ impl User {
     }
 }
 
+/// Someone's Spotify profile as their profile page shows it: who they are
+/// and the playlists they chose to show there.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UserProfile {
+    pub id: String,
+    pub name: String,
+    pub images: Vec<Image>,
+    pub followers: Option<u64>,
+    pub playlists: Vec<Playlist>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct TopTracks {
     #[serde(default, deserialize_with = "skip_nulls")]

@@ -44,6 +44,7 @@ const MAX_PENDING_ALBUM_TYPES: usize = 50;
 const AUDIOBOOK_BATCH: usize = 50;
 /// How long resolving a radio station and its songs may take.
 const RADIO_TIMEOUT: Duration = Duration::from_secs(20);
+const PROFILE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Newest episodes read from each saved podcast for Home's podcast shelf.
 const HOME_EPISODES_PER_SHOW: u32 = 5;
 pub const PLAYLIST_PAGE_SIZE: u32 = 50;
@@ -709,6 +710,15 @@ pub enum Command {
         seed: String,
         generation: u64,
     },
+    /// Read someone's profile and public playlists through the streaming
+    /// session.
+    UserProfile(String),
+    /// Internal: a profile finished loading for the session it started in.
+    UserProfileResolved {
+        session_generation: u64,
+        id: String,
+        result: Result<crate::api::models::UserProfile, String>,
+    },
     /// Internal: a radio finished resolving for the session it started in.
     RadioResolved {
         session_generation: u64,
@@ -815,6 +825,11 @@ pub enum Event {
         seed: String,
         generation: u64,
         result: Result<Vec<crate::api::models::Track>, String>,
+    },
+    /// Someone's profile and public playlists.
+    UserProfile {
+        id: String,
+        result: Result<crate::api::models::UserProfile, String>,
     },
     /// Whether Spotify's internal metadata positively identifies an album as an EP.
     AlbumType {
@@ -1324,6 +1339,8 @@ struct Worker {
     audiobook_lookup: BTreeSet<String>,
     /// Radios asked for before the streaming session was ready, by seed.
     radio_waiting: BTreeMap<String, u64>,
+    /// Profiles asked for before the streaming session was ready.
+    profiles_waiting: BTreeSet<String>,
     /// True while a playback grant or engine connection is in flight, so a
     /// second attempt does not pile up.
     engine_busy: bool,
@@ -1389,6 +1406,7 @@ impl Worker {
             album_type_lookup: AlbumTypeLookup::default(),
             audiobook_lookup: BTreeSet::new(),
             radio_waiting: BTreeMap::new(),
+            profiles_waiting: BTreeSet::new(),
             engine_busy: false,
             search_tasks: Vec::new(),
             engine_restart_pending: false,
@@ -1933,6 +1951,19 @@ impl Worker {
                     self.radio_waiting.insert(seed, generation);
                     self.start_radio();
                 }
+                Command::UserProfile(id) => {
+                    self.profiles_waiting.insert(id);
+                    self.start_user_profiles();
+                }
+                Command::UserProfileResolved {
+                    session_generation,
+                    id,
+                    result,
+                } => {
+                    if self.signed_in && session_generation == *self.session.borrow() {
+                        self.emit(Event::UserProfile { id, result });
+                    }
+                }
                 Command::RadioResolved {
                     session_generation,
                     seed,
@@ -2426,6 +2457,7 @@ impl Worker {
         self.album_type_lookup.reset_session();
         self.audiobook_lookup.clear();
         self.radio_waiting.clear();
+        self.profiles_waiting.clear();
         self.carry_volume();
         if let Some(engine) = self.engine.take() {
             engine.shutdown();
@@ -2776,6 +2808,7 @@ impl Worker {
                 self.start_album_type_lookup();
                 self.start_audiobook_lookup();
                 self.start_radio();
+                self.start_user_profiles();
             }
             None => {
                 self.resume = None;
@@ -3027,6 +3060,49 @@ impl Worker {
                     session_generation,
                     seed,
                     generation,
+                    result,
+                });
+            });
+        }
+    }
+
+    fn start_user_profiles(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            return;
+        };
+        let session_generation = *self.session.borrow();
+        for id in std::mem::take(&mut self.profiles_waiting) {
+            let engine = Arc::clone(&engine);
+            let commands = self.commands.clone();
+            tokio::spawn(async move {
+                let result = match tokio::time::timeout(
+                    PROFILE_TIMEOUT,
+                    session_reads::user_profile(engine.session(), &id),
+                )
+                .await
+                {
+                    Ok(Ok(profile)) => Ok(profile),
+                    Ok(Err(session_reads::Failure::Definitive(error)))
+                        if error.status() == Some(404) =>
+                    {
+                        Err("This profile doesn't exist.".to_string())
+                    }
+                    Ok(Err(error)) => {
+                        match error {
+                            session_reads::Failure::Definitive(error) => {
+                                log::warn!("profile {id} refused: {error}");
+                            }
+                            session_reads::Failure::Retry(error) => {
+                                log::warn!("profile {id} failed: {error:#}");
+                            }
+                        }
+                        Err("Couldn't load this profile. Try again.".to_string())
+                    }
+                    Err(_) => Err("Spotify took too long to answer. Try again.".into()),
+                };
+                let _ = commands.send(Command::UserProfileResolved {
+                    session_generation,
+                    id,
                     result,
                 });
             });

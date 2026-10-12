@@ -583,7 +583,11 @@ fn albums_grid(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
     });
 }
 
-fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models::Playlist) {
+pub(super) fn playlist_card(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    playlist: &crate::api::models::Playlist,
+) {
     let playing_here = app.playing_context_uri().as_deref() == Some(playlist.uri.as_str())
         && app.believed_playing();
     let card = widgets::card(
