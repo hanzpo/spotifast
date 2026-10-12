@@ -59,6 +59,41 @@ pub struct Server {
 
 static NEXT_CLIENT: AtomicU64 = AtomicU64::new(1);
 
+/// Set once the front end that started this process has gone.
+static PARENT_GONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+unsafe extern "C" {
+    fn getppid() -> i32;
+}
+
+/// Watches the process that started this one, the front end that keeps
+/// this app as its engine, and wakes the app once it has gone, so the
+/// engine never plays on after the front end quits or crashes.
+pub fn exit_with_parent(waker: Waker) {
+    // SAFETY: getppid has no preconditions and cannot fail.
+    let parent = unsafe { getppid() };
+    let _ = std::thread::Builder::new()
+        .name("parent-watch".into())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                // An orphan is handed to launchd, so its parent changes.
+                // SAFETY: as above.
+                if unsafe { getppid() } != parent {
+                    log::info!("The front end that started Spotlite has gone; quitting");
+                    PARENT_GONE.store(true, std::sync::atomic::Ordering::Relaxed);
+                    waker.wake();
+                    return;
+                }
+            }
+        });
+}
+
+/// Whether the front end that started this process has gone.
+pub fn parent_gone() -> bool {
+    PARENT_GONE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 impl Server {
     /// Listens at `path`, replacing a socket a previous run left behind.
     pub fn start(path: &Path, waker: Waker) -> std::io::Result<Server> {

@@ -250,6 +250,9 @@ impl App {
     /// Answers the API's requests and tells its clients what changed.
     /// Runs with the app's logic, before the queued actions apply.
     pub(super) fn serve_api(&mut self) {
+        if crate::server::parent_gone() && !self.quit_requested {
+            self.actions.push(Action::Quit);
+        }
         let Some(server) = self.api.take() else {
             return;
         };

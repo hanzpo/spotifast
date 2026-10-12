@@ -30,6 +30,12 @@ struct Cli {
     #[arg(long)]
     background: bool,
 
+    /// Quit when the process that started this one ends: the front end
+    /// that keeps Spotlite as its engine.
+    #[cfg(unix)]
+    #[arg(long)]
+    exit_with_parent: bool,
+
     /// Start with sample data and no Spotify connection (for screenshots).
     #[cfg(feature = "demo")]
     #[arg(long)]
@@ -483,6 +489,10 @@ pub(crate) fn run() -> eframe::Result<()> {
         app.load_custom_themes(&waker);
     }
     app.serve_in_background = cli.background;
+    #[cfg(unix)]
+    if cli.exit_with_parent {
+        spotifast::server::exit_with_parent(waker.clone());
+    }
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
         // Only the one running instance serves the API.
