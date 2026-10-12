@@ -99,6 +99,12 @@ struct Shell: View {
             }
         }
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
+        // Space plays and pauses, as in Music; a text field being typed in
+        // takes its own spaces first.
+        .onKeyPress(.space) {
+            model.toggle()
+            return .handled
+        }
         .onChange(of: model.searchText) { _, text in
             if !text.trimmingCharacters(in: .whitespaces).isEmpty, model.root != .search {
                 model.root = .search
