@@ -35,6 +35,10 @@ pub(super) struct Pushed {
     auth: u64,
     queue: u64,
     toast: Option<std::time::Instant>,
+    /// When a client last carried the playlists on past a failed page:
+    /// clients ask every moment while a list is loading, and each retry
+    /// into a rate limit only lengthens it.
+    playlists_resumed: Option<std::time::Instant>,
 }
 
 fn artists(artists: &[ArtistRef]) -> Value {
@@ -719,7 +723,12 @@ impl App {
                 } else if self.library.playlists_next.is_some()
                     && self.library.playlists_asked.is_none()
                     && self.library.playlists_refresh.is_none()
+                    && self
+                        .api_pushed
+                        .playlists_resumed
+                        .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(10))
                 {
+                    self.api_pushed.playlists_resumed = Some(std::time::Instant::now());
                     self.load_more(Page::Home);
                 }
                 Ok(self.api_playlists())
