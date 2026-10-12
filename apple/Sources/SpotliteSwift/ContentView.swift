@@ -202,6 +202,9 @@ struct Sidebar: View {
                     Button { model.requestNewPlaylist() } label: { Image(systemName: "plus") }
                         .buttonStyle(.plain)
                         .help("New Playlist")
+                        // In line with the rows' trailing edge, not the
+                        // sidebar's.
+                        .padding(.trailing, 10)
                 }
             }
         }
