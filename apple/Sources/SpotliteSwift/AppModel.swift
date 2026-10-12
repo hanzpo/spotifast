@@ -268,14 +268,15 @@ final class AppModel {
     }
 
     func loadPlaylists() async {
-        for attempt in 0..<60 {
+        for attempt in 0..<600 {
             guard let list = try? await call("library.playlists", as: PlaylistList.self) else { return }
             // A reload in progress or one that failed keeps the list shown.
             if let fresh = list.playlists { playlists = fresh }
             if let rows = list.rows { sidebarRows = rows }
             likedContext = list.likedContext ?? likedContext
             if !list.loading { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 10 ? 250 : 800))
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
         }
     }
 
@@ -444,11 +445,12 @@ final class AppModel {
     }
 
     func loadQueue() async {
-        for attempt in 0..<20 {
+        for attempt in 0..<600 {
             guard let state = try? await call("queue.get", as: QueueState.self) else { return }
             queue = state
             if !state.loading { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 200 : 600))
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
         }
     }
 
@@ -482,11 +484,12 @@ final class AppModel {
     // MARK: Lyrics
 
     func loadLyrics() async {
-        for attempt in 0..<30 {
+        for attempt in 0..<600 {
             guard let state = try? await call("lyrics.get", as: LyricsState.self) else { return }
             lyrics = state
             if !state.loading { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 200 : 600))
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
         }
     }
 

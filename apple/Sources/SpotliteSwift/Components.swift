@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// How long to wait before asking the engine again: soon at first, then
+/// every two seconds, which outlasts a Spotify rate limit of half a minute
+/// without asking into it every moment. Loops stop after about ten
+/// minutes, and with the view that started them.
+func pollDelay(_ attempt: Int) -> Duration {
+    .milliseconds(min(200 + attempt * 150, 2_000))
+}
+
 /// Asks the server for a page until it has finished loading, and again
 /// whenever the library changes underneath it.
 struct Loader<Value: Decodable & Sendable, Content: View>: View {
@@ -33,7 +41,7 @@ struct Loader<Value: Decodable & Sendable, Content: View>: View {
     }
 
     private func poll() async {
-        for attempt in 0..<80 {
+        for attempt in 0..<600 {
             do {
                 let next = try await model.call(method, params, as: Value.self)
                 value = next
@@ -43,7 +51,7 @@ struct Loader<Value: Decodable & Sendable, Content: View>: View {
                 if value == nil { failure = error.localizedDescription }
                 return
             }
-            try? await Task.sleep(for: .milliseconds(attempt < 10 ? 200 : 700))
+            try? await Task.sleep(for: pollDelay(attempt))
             if Task.isCancelled { return }
         }
     }

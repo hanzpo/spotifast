@@ -187,12 +187,13 @@ struct SearchView: View {
         // Typing settles before Spotify is asked.
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
-        for attempt in 0..<40 {
+        for attempt in 0..<600 {
             guard let next = try? await model.call("search", ["query": query], as: SearchResults.self),
                   !Task.isCancelled else { return }
             results = numbered(next)
             if !next.loading { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 10 ? 200 : 600))
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
         }
     }
 

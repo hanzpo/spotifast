@@ -115,11 +115,12 @@ struct HistoryList: View {
     }
 
     private func load() async {
-        for attempt in 0..<20 {
+        for attempt in 0..<600 {
             guard let next = try? await model.call("library.recent", as: RecentPlays.self) else { return }
             plays = next
             if !next.loading { return }
-            try? await Task.sleep(for: .milliseconds(attempt < 5 ? 300 : 800))
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
         }
     }
 }
