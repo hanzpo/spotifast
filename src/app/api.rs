@@ -1334,9 +1334,12 @@ impl App {
             "more": items.can_load_more(),
             "show_album": true,
             "show_added": true,
-            "tracks": items.items.iter().filter_map(|entry| {
+            "tracks": items.items.iter().enumerate().filter_map(|(index, entry)| {
                 let mut row = item(entry.playable()?);
                 row["added_at"] = json!(entry.added_at);
+                // Where the song sits in Spotify's copy: rows it cannot
+                // play are left out here, so the list's own order is not it.
+                row["spotify_position"] = json!(items.base_offset as usize + index);
                 if let Some(adder) = entry.added_by.as_ref().and_then(|user| user.id.as_ref())
                     && header.is_some_and(|playlist| playlist.collaborative
                         || playlist.owner.id.as_deref() != Some(adder.as_str()))
