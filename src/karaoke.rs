@@ -12,6 +12,9 @@
 
 mod mdx;
 
+#[cfg(target_os = "macos")]
+pub mod coreml;
+
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};

@@ -136,6 +136,11 @@ aes = "0.8"
 ctr = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Karaoke's vocal model on the Neural Engine (src/karaoke/coreml.rs).
+objc2-core-ml = { version = "0.3", default-features = false, features = ["std", "MLModel", "MLModelConfiguration", "MLMultiArray", "MLFeatureProvider", "MLDictionaryFeatureProvider", "MLFeatureValue", "MLModel_MLModelCompilation", "block2"] }
+block2 = "0.6"
+# The model takes and gives half-precision numbers; already in the tree.
+half = "2"
 apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 # The application menus and Dock menu (src/mac_menu.rs). "exception" lets
 # src/mac_touchbar_crash_guard.rs catch a specific AppKit Objective-C
@@ -145,7 +150,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 # NSAppleEventManager and NSAppleEventDescriptor carry the Spotify links
 # macOS hands an app registered for the scheme (src/mac_links.rs), and
 # NSRunLoop has the delayed perform the title bar uses (src/window.rs).
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSDate", "NSObjCRuntime", "NSRunLoop", "NSString", "NSThread", "NSDictionary", "NSAttributedString", "NSData"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSDate", "NSObjCRuntime", "NSRunLoop", "NSString", "NSThread", "NSDictionary", "NSAttributedString", "NSData", "NSURL", "NSArray", "NSValue", "NSError"] }
 # The window's view, for the sidebar material under the interface
 # (src/mac_glass.rs). eframe already compiles this crate.
 raw-window-handle = "0.6"
