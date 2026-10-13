@@ -39,11 +39,24 @@ struct QueueView: View {
                     ForEach(Array(queued.enumerated()), id: \.offset) { index, track in
                         QueueRow(track: track, playing: false)
                             .onTapGesture(count: 2) { model.playQueued(at: index, queued: true) }
-                            .contextMenu { SongMenu(tracks: [track], source: SongSource()) }
+                            .contextMenu {
+                                if queue?.reorderable == true {
+                                    Button("Remove from Queue", systemImage: "minus.circle") {
+                                        model.removeQueued(at: index)
+                                    }
+                                    Divider()
+                                }
+                                SongMenu(tracks: [track], source: SongSource())
+                            }
                     }
                     .onMove { from, to in
                         guard queue?.reorderable == true, let start = from.first else { return }
                         model.moveQueued(from: start, to: to)
+                    }
+                    .onDelete { rows in
+                        guard queue?.reorderable == true else { return }
+                        // From the bottom up, so each index still names its row.
+                        for row in rows.sorted(by: >) { model.removeQueued(at: row) }
                     }
                 } header: {
                     HStack {

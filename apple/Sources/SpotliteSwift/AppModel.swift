@@ -477,6 +477,15 @@ final class AppModel {
         send("queue.move", ["from": from, "to": to])
     }
 
+    /// Takes one song queued by hand out of the queue.
+    func removeQueued(at index: Int) {
+        if var queued = queue?.queued, queued.indices.contains(index) {
+            queued.remove(at: index)
+            queue?.queued = queued
+        }
+        send("queue.remove", ["index": index])
+    }
+
     func clearQueue() {
         queue?.queued = []
         send("queue.clear")
