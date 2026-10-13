@@ -45,6 +45,7 @@ struct PlayerBar: View {
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: 12) {
+                KaraokeButton()
                 Button { model.togglePanel(.lyrics) } label: {
                     Image(systemName: "quote.bubble")
                         .foregroundStyle(model.panel == .lyrics ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -74,6 +75,81 @@ struct PlayerBar: View {
         .frame(height: 60)
         .frame(maxWidth: 1000)
         .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
+
+/// Karaoke's microphone: takes the voice out of the song on this Mac.
+struct KaraokeButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let player = model.player
+        if let karaoke = player.karaoke, karaoke.available, player.local != false {
+            Button(action: model.toggleKaraoke) {
+                if karaoke.busy {
+                    ProgressView().controlSize(.mini).frame(width: 16)
+                } else {
+                    Image(systemName: "music.mic")
+                        .foregroundStyle(karaoke.on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                }
+            }
+            .help(Self.help(karaoke))
+            .disabled(!player.hasSong && !karaoke.on)
+        }
+    }
+
+    static func help(_ karaoke: KaraokeState) -> String {
+        switch karaoke.status {
+        case "downloading": "Downloading the vocal model…"
+        case "preparing": "Preparing karaoke…"
+        case "failed": "Karaoke couldn't start"
+        default: karaoke.on ? "Turn Off Karaoke" : "Karaoke"
+        }
+    }
+}
+
+/// The microphone and, while karaoke is on, how much of the voice to keep.
+struct KaraokeControls: View {
+    @Environment(AppModel.self) private var model
+    @State private var dragging: Double?
+
+    var body: some View {
+        if let karaoke = model.player.karaoke, karaoke.available, model.player.local != false {
+            HStack(spacing: 10) {
+                KaraokeButton()
+                    .buttonStyle(.plain)
+                if karaoke.on {
+                    Image(systemName: "person.wave.2")
+                        .foregroundStyle(.secondary)
+                        .help("Vocals")
+                    Slider(
+                        value: Binding(
+                            get: { dragging ?? karaoke.level },
+                            set: { value in
+                                dragging = value
+                                model.setVocalLevel(value, done: false)
+                            }),
+                        in: 0...1
+                    ) { editing in
+                        if !editing, let value = dragging {
+                            model.setVocalLevel(value, done: true)
+                            dragging = nil
+                        }
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: 180)
+                    .help("Vocals")
+                    if karaoke.busy {
+                        Text(KaraokeButton.help(karaoke))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 6)
+        }
     }
 }
 

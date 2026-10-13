@@ -347,8 +347,24 @@ struct PlayerState: Codable, Equatable, Sendable {
     var context: String?
     var playingFrom: String?
     var playingFromPage: String?
+    var karaoke: KaraokeState?
 
     static let empty = PlayerState(hasSong: false)
+}
+
+/// Karaoke: the voice taken out of what plays on this Mac.
+struct KaraokeState: Codable, Equatable, Sendable {
+    /// Whether this Mac can do it at all.
+    var available: Bool
+    var on: Bool
+    /// How much of the voice is left, from 0 to 1.
+    var level: Double
+    /// `off`, `downloading`, `preparing`, `running` or `failed`.
+    var status: String
+    var error: String?
+
+    /// Getting ready: the model is downloading or loading.
+    var busy: Bool { on && (status == "downloading" || status == "preparing") }
 }
 
 /// A setting the server lets a client change.

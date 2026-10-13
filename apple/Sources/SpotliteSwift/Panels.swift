@@ -210,6 +210,7 @@ struct LyricsView: View {
         let lyrics = model.lyrics
         VStack(spacing: 0) {
             if header { PanelHeader(title: "Lyrics") }
+            KaraokeControls()
             if let lyrics, !lyrics.lines.isEmpty, lyrics.uri == model.player.uri {
                 TimelineView(.periodic(from: .now, by: 0.25)) { context in
                     let position = model.position(at: context.date)

@@ -84,6 +84,14 @@ struct SpotliteApp: App {
                     .keyboardShortcut(.downArrow)
                 Button("Mute") { model.toggleMute() }
                 Divider()
+                if model.player.karaoke?.available == true {
+                    Toggle("Karaoke", isOn: Binding(
+                        get: { model.player.karaoke?.on == true },
+                        set: { _ in model.toggleKaraoke() }))
+                        .keyboardShortcut("k", modifiers: [.command, .option])
+                        .disabled(model.player.local == false)
+                    Divider()
+                }
                 Toggle("Shuffle", isOn: Binding(
                     get: { model.player.shuffle == true },
                     set: { _ in model.toggleShuffle() }))

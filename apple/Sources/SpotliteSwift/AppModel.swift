@@ -86,6 +86,8 @@ final class AppModel {
     /// A seek being dragged, as a fraction.
     var scrubbing: Double?
     var volumeDragging: Int?
+    /// The vocal level while its slider is held.
+    var vocalDragging: Double?
 
     // MARK: Panels
 
@@ -234,6 +236,10 @@ final class AppModel {
         // A drag on the volume keeps the slider where the hand put it.
         var state = state
         if let volume = volumeDragging { state.volume = volume }
+        if let level = vocalDragging { state.karaoke?.level = level }
+        if state.karaoke?.status == "failed", player.karaoke?.status != "failed" {
+            show("Karaoke couldn't start: \(state.karaoke?.error ?? "the vocal model failed")")
+        }
         player = state
         playerAt = Date()
     }
@@ -427,6 +433,21 @@ final class AppModel {
     }
 
     func toggleMute() { send("player.mute") }
+
+    /// Takes the voice out of the song, or puts it back. The first time,
+    /// the vocal model downloads.
+    func toggleKaraoke() {
+        let on = !(player.karaoke?.on ?? false)
+        player.karaoke?.on = on
+        player.karaoke?.status = on ? "preparing" : "off"
+        send("karaoke.set", ["on": on])
+    }
+
+    func setVocalLevel(_ level: Double, done: Bool) {
+        player.karaoke?.level = level
+        vocalDragging = done ? nil : level
+        send("karaoke.set", ["level": level])
+    }
 
     /// Where the song is now, counted on from the last report.
     func position(at date: Date) -> Int {
