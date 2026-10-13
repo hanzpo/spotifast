@@ -397,6 +397,7 @@ final class AppModel {
     func toggleSaved(_ uri: String) {
         if uri == player.uri { player.saved = !(player.saved ?? false) }
         send("library.toggle", ["uri": uri])
+        revision += 1
     }
 
     func seek(to fraction: Double) {

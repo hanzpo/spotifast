@@ -33,6 +33,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     var playable: Bool?
     /// The row's place in Spotify's copy of its playlist.
     var spotifyPosition: Int?
+    /// In Liked Songs, as far as the engine knows.
+    var saved: Bool?
 
     /// A song can sit in a list twice; the row's position keeps them apart.
     var position: Int = 0
@@ -41,7 +43,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case kind, uri, name, artists, album, durationMs, explicit, image, addedAt, addedBy,
              trackNumber, discNumber, subtitle, showId, releaseDate, description, resumeMs,
-             played, playable, spotifyPosition
+             played, playable, spotifyPosition, saved
     }
 
     var isEpisode: Bool { kind == "episode" }

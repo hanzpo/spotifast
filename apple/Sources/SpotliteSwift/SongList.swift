@@ -262,6 +262,10 @@ struct SongRow: View {
     var play: () -> Void = {}
 
     @State private var hovered = false
+    /// The heart as just clicked, until the list comes back with it.
+    @State private var likedNow: Bool?
+
+    private var isLiked: Bool { likedNow ?? track.saved ?? false }
 
     private var secondary: AnyShapeStyle {
         selected ? AnyShapeStyle(.white.opacity(0.85)) : AnyShapeStyle(.secondary)
@@ -321,14 +325,19 @@ struct SongRow: View {
                     .lineLimit(1)
                     .frame(width: Widths.added, alignment: .leading)
             }
+            // Filled for a liked song, always; an outline to like one on
+            // the row under the pointer.
             Button {
-                model.toggleSaved(track.uri)
+                let liked = !isLiked
+                likedNow = liked
+                model.setSaved([track], liked)
             } label: {
-                Image(systemName: "heart")
+                Image(systemName: isLiked ? "heart.fill" : "heart")
             }
             .buttonStyle(.plain)
-            .foregroundStyle(secondary)
-            .opacity(hovered && !track.isEpisode ? 1 : 0)
+            .foregroundStyle(isLiked && !selected ? AnyShapeStyle(.tint) : secondary)
+            .opacity(!track.isEpisode && (hovered || isLiked) ? 1 : 0)
+            .help(isLiked ? "Remove from Liked Songs" : "Add to Liked Songs")
             .frame(width: Widths.heart)
             // Music's More button, on the row under the pointer.
             Menu {
@@ -357,6 +366,8 @@ struct SongRow: View {
                     : striped ? AnyShapeStyle(.quinary) : AnyShapeStyle(.clear))
         }
         .onHover { hovered = $0 }
+        // The list's own answer replaces the click's guess once it comes.
+        .onChange(of: track.saved) { likedNow = nil }
     }
 
     @ViewBuilder private var number: some View {
