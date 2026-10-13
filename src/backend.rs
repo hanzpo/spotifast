@@ -4104,21 +4104,11 @@ async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiR
 /// Web API pages them.
 const LIBRARY_PAGE_SIZE: u32 = 50;
 
-/// The account's playlists in its own order, as the session lists them,
-/// read once for the pages of one load: a list read within the last
-/// minute stands.
+/// The account's playlists in its own order, as the session lists them.
+/// Read afresh for every page: the list is free to read, and one kept
+/// even for a minute would undo a follow or unfollow made in it.
 async fn library_uris(engine: &Engine) -> anyhow::Result<Vec<String>> {
-    static LISTED: std::sync::Mutex<Option<(Instant, String, Vec<String>)>> =
-        std::sync::Mutex::new(None);
-    let account = engine.session().username();
-    if let Ok(listed) = LISTED.lock()
-        && let Some((at, owner, uris)) = listed.as_ref()
-        && *owner == account
-        && at.elapsed() < Duration::from_secs(60)
-    {
-        return Ok(uris.clone());
-    }
-    let uris: Vec<String> = engine
+    Ok(engine
         .rootlist()
         .await?
         .entries
@@ -4127,11 +4117,7 @@ async fn library_uris(engine: &Engine) -> anyhow::Result<Vec<String>> {
             crate::player::RootlistEntry::Playlist(uri) => Some(uri),
             _ => None,
         })
-        .collect();
-    if let Ok(mut listed) = LISTED.lock() {
-        *listed = Some((Instant::now(), account, uris.clone()));
-    }
-    Ok(uris)
+        .collect())
 }
 
 /// Playlists found by recent searches. Only the shared app searches
