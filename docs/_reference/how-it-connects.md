@@ -327,9 +327,14 @@ GraphQL service Spotify's desktop and web apps read their pages from
 persisted queries those apps do, with the streaming session's own token and
 client token, so they draw on no Web API app's quota. The query hashes live
 in `src/pathfinder.rs`, read from the desktop app's `xpui.spa` and the web
-player's script; Spotify replaces them as its apps change, and a query whose
-hash has gone fails. Search and similar artists then fall back to the Web
-API; Home falls back to the shelves the app makes up itself.
+player's script. Spotify replaces them as its apps change. When a query
+fails, the engine reads the current hashes again, at most every six hours,
+from the desktop app installed on this Mac
+(`/Applications/Spotify.app/.../xpui.spa`) and from the web player's page
+and main script at `open.spotify.com` (fetched with the app's own HTTP
+client and proxy settings), and asks once more if the query's hash changed.
+A query that still fails falls back: search and similar artists to the Web
+API, Home to the shelves the app makes up itself.
 
 Pathfinder answers for the session's account. It is asked before the shared
 app has confirmed the Web API's account, and never when the Web API is

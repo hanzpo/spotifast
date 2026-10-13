@@ -1391,6 +1391,7 @@ impl Worker {
         commands: mpsc::UnboundedSender<Command>,
         waker: Waker,
     ) -> Self {
+        crate::pathfinder::use_http(&http);
         Self {
             #[cfg(not(test))]
             credentials: CredentialStore::new(dirs.clone()),

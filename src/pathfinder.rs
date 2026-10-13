@@ -622,16 +622,236 @@ const QUERIES: &[(&str, &str)] = &[
     ),
 ];
 
-fn hash(operation: &str) -> Option<&'static str> {
+fn hash(operation: &str) -> Option<String> {
+    if let Ok(found) = FOUND.lock()
+        && let Some(hash) = found.hashes.get(operation)
+    {
+        return Some(hash.clone());
+    }
     QUERIES
         .iter()
         .find(|(name, _)| *name == operation)
-        .map(|(_, hash)| *hash)
+        .map(|(_, hash)| (*hash).to_string())
 }
 
+/// Hashes read afresh from Spotify's apps, which replace the built-in ones,
+/// and when they were last looked for.
+#[derive(Default)]
+struct Found {
+    hashes: std::collections::HashMap<String, String>,
+    looked_at: Option<std::time::Instant>,
+}
+
+static FOUND: std::sync::LazyLock<std::sync::Mutex<Found>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// How long after looking for new hashes a failing query doesn't look again.
+const LOOK_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
 /// Asks pathfinder one of the desktop app's queries, and gives its `data`.
+/// When it fails, Spotify may have replaced the query's hash as its apps
+/// changed: the hashes are read again from the installed desktop app and
+/// the web player, and a query whose hash changed is asked once more.
 pub async fn query(session: &Session, operation: &str, variables: Value) -> anyhow::Result<Value> {
     let hash = hash(operation).ok_or_else(|| anyhow!("no pathfinder query named {operation}"))?;
+    match ask(session, operation, &hash, &variables).await {
+        Ok(data) => Ok(data),
+        Err(error) => {
+            let due = FOUND.lock().is_ok_and(|found| {
+                found
+                    .looked_at
+                    .is_none_or(|at| at.elapsed() >= LOOK_AGAIN_AFTER)
+            });
+            if !due {
+                return Err(error);
+            }
+            refresh_hashes().await;
+            match self::hash(operation).filter(|fresh| *fresh != hash) {
+                Some(fresh) => {
+                    log::info!("pathfinder {operation} has a new hash; asking again");
+                    ask(session, operation, &fresh, &variables).await
+                }
+                None => Err(error),
+            }
+        }
+    }
+}
+
+/// Reads the queries' current hashes from the desktop app installed on
+/// this Mac and from the web player, and keeps them in place of the
+/// built-in ones.
+async fn refresh_hashes() {
+    if let Ok(mut found) = FOUND.lock() {
+        found.looked_at = Some(std::time::Instant::now());
+    }
+    let mut hashes = std::collections::HashMap::new();
+    let desktop = tokio::task::spawn_blocking(|| {
+        std::fs::read(DESKTOP_BUNDLE)
+            .ok()
+            .map(|bundle| bundle_queries(&bundle))
+            .unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default();
+    match web_player_queries().await {
+        Ok(web) => hashes.extend(web),
+        Err(error) => log::warn!("couldn't read the web player's queries: {error:#}"),
+    }
+    // The desktop app's hashes win where both have a query.
+    hashes.extend(desktop);
+    log::info!(
+        "read {} pathfinder query hashes from Spotify's apps",
+        hashes.len()
+    );
+    if let Ok(mut found) = FOUND.lock() {
+        found.hashes.extend(hashes);
+    }
+}
+
+/// The desktop app's interface, whose script names its queries.
+const DESKTOP_BUNDLE: &str = "/Applications/Spotify.app/Contents/Resources/Apps/xpui.spa";
+
+/// Every persisted query a script names, with its hash.
+fn script_queries(script: &str) -> Vec<(String, String)> {
+    static QUERY: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#""([A-Za-z0-9]+)","query","([0-9a-f]{64})""#).expect("a valid pattern")
+    });
+    QUERY
+        .captures_iter(script)
+        .map(|found| (found[1].to_string(), found[2].to_string()))
+        .collect()
+}
+
+/// The queries named by the scripts in a zip archive: the desktop app's
+/// `xpui.spa`. Only stored and deflated entries are read, which is all
+/// Spotify's archive holds.
+fn bundle_queries(archive: &[u8]) -> Vec<(String, String)> {
+    let u16_at = |at: usize| {
+        archive
+            .get(at..at + 2)
+            .map(|b| u16::from_le_bytes([b[0], b[1]]) as usize)
+    };
+    let u32_at = |at: usize| {
+        archive
+            .get(at..at + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    // The end of the central directory, found from the archive's end.
+    let Some(end) = (0..archive.len().saturating_sub(21))
+        .rev()
+        .take(65_557)
+        .find(|&at| u32_at(at) == Some(0x0605_4b50))
+    else {
+        return Vec::new();
+    };
+    let (Some(entries), Some(mut at)) = (u16_at(end + 10), u32_at(end + 16)) else {
+        return Vec::new();
+    };
+    let mut queries = Vec::new();
+    for _ in 0..entries {
+        if u32_at(at) != Some(0x0201_4b50) {
+            break;
+        }
+        let (
+            Some(method),
+            Some(size),
+            Some(name_len),
+            Some(extra_len),
+            Some(comment_len),
+            Some(local),
+        ) = (
+            u16_at(at + 10),
+            u32_at(at + 20),
+            u16_at(at + 28),
+            u16_at(at + 30),
+            u16_at(at + 32),
+            u32_at(at + 42),
+        )
+        else {
+            break;
+        };
+        let name = archive.get(at + 46..at + 46 + name_len).unwrap_or_default();
+        at += 46 + name_len + extra_len + comment_len;
+        if !name.ends_with(b".js") {
+            continue;
+        }
+        let (Some(local_name), Some(local_extra)) = (u16_at(local + 26), u16_at(local + 28)) else {
+            continue;
+        };
+        let start = local + 30 + local_name + local_extra;
+        let Some(data) = archive.get(start..start + size) else {
+            continue;
+        };
+        let script = match method {
+            0 => data.to_vec(),
+            8 => match miniz_oxide::inflate::decompress_to_vec(data) {
+                Ok(script) => script,
+                Err(_) => continue,
+            },
+            _ => continue,
+        };
+        queries.extend(script_queries(&String::from_utf8_lossy(&script)));
+    }
+    queries
+}
+
+/// The app's own HTTP client, which follows its proxy settings, for the
+/// web player's page: librespot's names itself Spotify's desktop app,
+/// which open.spotify.com answers with a page of no scripts.
+static WEB: std::sync::OnceLock<crate::http::Http> = std::sync::OnceLock::new();
+
+/// A browser open.spotify.com serves the web player to; it answers a bare
+/// one with a page that names no script.
+const BROWSER: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
+    (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+/// Gives pathfinder the app's HTTP client for reading the web player.
+pub fn use_http(http: &crate::http::Http) {
+    let _ = WEB.set(http.clone());
+}
+
+/// The queries the web player's main script names: those, like Home, the
+/// desktop app keeps out of reach.
+async fn web_player_queries() -> anyhow::Result<Vec<(String, String)>> {
+    let client = WEB
+        .get()
+        .ok_or_else(|| anyhow!("no HTTP client yet"))?
+        .client()
+        .map_err(|error| anyhow!(error))?;
+    let get = |url: String| {
+        let client = client.clone();
+        async move {
+            let text = client
+                .get(url)
+                .header(header::USER_AGENT, BROWSER)
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?;
+            anyhow::Ok(text)
+        }
+    };
+    let page = get("https://open.spotify.com/".into()).await?;
+    static SCRIPT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r#"https://open\.spotifycdn\.com/cdn/build/web-player/web-player\.[0-9a-f]+\.js"#,
+        )
+        .expect("a valid pattern")
+    });
+    let script = SCRIPT
+        .find(&page)
+        .ok_or_else(|| anyhow!("the web player's page names no script"))?;
+    Ok(script_queries(&get(script.as_str().to_string()).await?))
+}
+
+/// One query, asked with the given hash.
+async fn ask(
+    session: &Session,
+    operation: &str,
+    hash: &str,
+    variables: &Value,
+) -> anyhow::Result<Value> {
     let body = json!({
         "variables": variables,
         "operationName": operation,
@@ -1153,6 +1373,80 @@ mod tests {
         assert_eq!(playlist.name, "Discover Weekly");
         assert_eq!(album.album_type.as_deref(), Some("single"));
         assert_eq!(show.publisher, "FlightStory");
+    }
+
+    /// A zip archive holding the given entries, each deflated or stored.
+    fn archive(entries: &[(&str, &[u8], bool)]) -> Vec<u8> {
+        let mut zip = Vec::new();
+        let mut directory = Vec::new();
+        for (name, content, deflate) in entries {
+            let data = if *deflate {
+                miniz_oxide::deflate::compress_to_vec(content, 6)
+            } else {
+                content.to_vec()
+            };
+            let method: u16 = if *deflate { 8 } else { 0 };
+            let offset = zip.len() as u32;
+            zip.extend(0x0403_4b50u32.to_le_bytes());
+            zip.extend([20, 0, 0, 0]);
+            zip.extend(method.to_le_bytes());
+            zip.extend([0; 8]);
+            zip.extend((data.len() as u32).to_le_bytes());
+            zip.extend((content.len() as u32).to_le_bytes());
+            zip.extend((name.len() as u16).to_le_bytes());
+            zip.extend(0u16.to_le_bytes());
+            zip.extend(name.as_bytes());
+            zip.extend(&data);
+            directory.extend(0x0201_4b50u32.to_le_bytes());
+            directory.extend([20, 0, 20, 0, 0, 0]);
+            directory.extend(method.to_le_bytes());
+            directory.extend([0; 8]);
+            directory.extend((data.len() as u32).to_le_bytes());
+            directory.extend((content.len() as u32).to_le_bytes());
+            directory.extend((name.len() as u16).to_le_bytes());
+            directory.extend([0; 12]);
+            directory.extend(offset.to_le_bytes());
+            directory.extend(name.as_bytes());
+        }
+        let start = zip.len() as u32;
+        zip.extend(&directory);
+        zip.extend(0x0605_4b50u32.to_le_bytes());
+        zip.extend([0; 4]);
+        zip.extend((entries.len() as u16).to_le_bytes());
+        zip.extend((entries.len() as u16).to_le_bytes());
+        zip.extend((directory.len() as u32).to_le_bytes());
+        zip.extend(start.to_le_bytes());
+        zip.extend([0; 2]);
+        zip
+    }
+
+    #[test]
+    fn the_desktop_bundle_names_its_queries_in_its_scripts() {
+        let hash = "a".repeat(64);
+        let script = format!(r#"x=new l("searchDesktop","query","{hash}",null);"#);
+        let zip = archive(&[
+            ("xpui.js", script.as_bytes(), true),
+            ("styles.css", script.as_bytes(), false),
+            ("stored.js", br#"new l("home","mutation","x",null)"#, false),
+        ]);
+        assert_eq!(bundle_queries(&zip), [("searchDesktop".to_string(), hash)]);
+        assert!(bundle_queries(b"not a zip").is_empty());
+    }
+
+    /// The desktop app on this Mac, when it is installed, still names the
+    /// queries the app asks.
+    #[test]
+    fn the_installed_desktop_app_names_the_queries_asked() {
+        let Ok(bundle) = std::fs::read(DESKTOP_BUNDLE) else {
+            return;
+        };
+        let names: Vec<String> = bundle_queries(&bundle)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        for asked in ["searchDesktop", "searchPlaylists", "queryArtistRelated"] {
+            assert!(names.iter().any(|name| name == asked), "{asked} missing");
+        }
     }
 
     #[test]
