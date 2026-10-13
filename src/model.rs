@@ -662,6 +662,9 @@ pub struct HomeData {
     /// stand, the shelves the app made up in their place (Made for You
     /// and the recommendations) aren't asked for.
     pub spotify: Loadable<Vec<crate::pathfinder::HomeSection>>,
+    /// Whether Spotify answered for its Home since the app started, not
+    /// only the disk.
+    pub spotify_fetched: bool,
     pub discover: HashMap<String, Loadable<Vec<Playlist>>>,
     pub discover_pending: HashMap<String, Loadable<Vec<Playlist>>>,
     /// Saved podcasts with their newest episodes, in library order, for the

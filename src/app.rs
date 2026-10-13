@@ -2084,7 +2084,7 @@ impl App {
                 self.local_ready = true;
                 // Spotify's own Home is read over the streaming session,
                 // which a Home load at start-up comes before.
-                if self.home.requested && self.home.spotify.get().is_none() {
+                if self.home.requested && !self.home.spotify_fetched {
                     self.backend.api(ApiRequest::SpotifyHome {
                         generation: self.home.generation,
                     });
@@ -5006,6 +5006,7 @@ impl App {
                     log::debug!("Spotify's Home: {error}");
                 }
                 self.home_cache_dirty |= result.is_ok();
+                self.home.spotify_fetched |= result.is_ok();
                 self.home.spotify.refresh(result);
             }
             ApiResponse::Recommendations { generation, result } => {
