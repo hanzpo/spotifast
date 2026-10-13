@@ -635,18 +635,20 @@ fn hash(operation: &str) -> Option<String> {
 }
 
 /// Hashes read afresh from Spotify's apps, which replace the built-in ones,
-/// and when they were last looked for.
+/// and when a failing query may next look for them.
 #[derive(Default)]
 struct Found {
     hashes: std::collections::HashMap<String, String>,
-    looked_at: Option<std::time::Instant>,
+    look_after: Option<std::time::Instant>,
 }
 
 static FOUND: std::sync::LazyLock<std::sync::Mutex<Found>> =
     std::sync::LazyLock::new(Default::default);
 
-/// How long after looking for new hashes a failing query doesn't look again.
+/// How long after reading the hashes a failing query doesn't read them
+/// again; a read the web player didn't answer is tried again sooner.
 const LOOK_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+const RETRY_UNREAD_AFTER: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 /// Asks pathfinder one of the desktop app's queries, and gives its `data`.
 /// When it fails, Spotify may have replaced the query's hash as its apps
@@ -657,15 +659,22 @@ pub async fn query(session: &Session, operation: &str, variables: Value) -> anyh
     match ask(session, operation, &hash, &variables).await {
         Ok(data) => Ok(data),
         Err(error) => {
-            let due = FOUND.lock().is_ok_and(|found| {
-                found
-                    .looked_at
-                    .is_none_or(|at| at.elapsed() >= LOOK_AGAIN_AFTER)
+            let due = FOUND.lock().is_ok_and(|mut found| {
+                let due = found
+                    .look_after
+                    .is_none_or(|at| std::time::Instant::now() >= at);
+                if due {
+                    // Claimed now, so queries failing together read once.
+                    found.look_after = Some(std::time::Instant::now() + RETRY_UNREAD_AFTER);
+                }
+                due
             });
             if !due {
                 return Err(error);
             }
-            refresh_hashes().await;
+            // On a task of its own, so a caller that gives up waiting
+            // doesn't leave the read half done.
+            let _ = tokio::spawn(refresh_hashes()).await;
             match self::hash(operation).filter(|fresh| *fresh != hash) {
                 Some(fresh) => {
                     log::info!("pathfinder {operation} has a new hash; asking again");
@@ -681,9 +690,6 @@ pub async fn query(session: &Session, operation: &str, variables: Value) -> anyh
 /// this Mac and from the web player, and keeps them in place of the
 /// built-in ones.
 async fn refresh_hashes() {
-    if let Ok(mut found) = FOUND.lock() {
-        found.looked_at = Some(std::time::Instant::now());
-    }
     let mut hashes = std::collections::HashMap::new();
     let desktop = tokio::task::spawn_blocking(|| {
         std::fs::read(DESKTOP_BUNDLE)
@@ -693,10 +699,16 @@ async fn refresh_hashes() {
     })
     .await
     .unwrap_or_default();
-    match web_player_queries().await {
-        Ok(web) => hashes.extend(web),
-        Err(error) => log::warn!("couldn't read the web player's queries: {error:#}"),
-    }
+    let web_read = match web_player_queries().await {
+        Ok(web) => {
+            hashes.extend(web);
+            true
+        }
+        Err(error) => {
+            log::warn!("couldn't read the web player's queries: {error:#}");
+            false
+        }
+    };
     // The desktop app's hashes win where both have a query.
     hashes.extend(desktop);
     log::info!(
@@ -705,6 +717,12 @@ async fn refresh_hashes() {
     );
     if let Ok(mut found) = FOUND.lock() {
         found.hashes.extend(hashes);
+        let wait = if web_read {
+            LOOK_AGAIN_AFTER
+        } else {
+            RETRY_UNREAD_AFTER
+        };
+        found.look_after = Some(std::time::Instant::now() + wait);
     }
 }
 

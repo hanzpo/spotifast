@@ -1857,9 +1857,15 @@ impl Worker {
                         continue;
                     };
                     tokio::spawn(async move {
-                        let result =
-                            crate::pathfinder::query(engine.session(), &operation, variables).await;
-                        reply(result.map_err(|error| format!("{error:#}")));
+                        let result = tokio::time::timeout(
+                            SESSION_READ_TIMEOUT * 2,
+                            crate::pathfinder::query(engine.session(), &operation, variables),
+                        )
+                        .await;
+                        reply(match result {
+                            Ok(result) => result.map_err(|error| format!("{error:#}")),
+                            Err(_) => Err("Spotify didn't answer in time".into()),
+                        });
                     });
                 }
                 Command::RootlistFinished { generation, result } => {
