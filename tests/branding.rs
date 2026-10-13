@@ -109,7 +109,7 @@ fn existing_preferences_and_custom_connect_names_survive_a_save() {
         saved.save(&path);
         assert_eq!(Settings::load(&path), saved);
     }
-    assert_eq!(Settings::default().device_name, "Spotlite");
+    assert_eq!(Settings::default().device_name, "SwiftSpot");
 }
 
 #[cfg(target_os = "linux")]

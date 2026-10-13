@@ -1,12 +1,12 @@
-# Spotlite for SwiftUI
+# SwiftSpot for SwiftUI
 
 A native SwiftUI front end. It doesn't talk to Spotify itself: the running
-Spotlite is the server, keeping the session, playback, the queue and the
-library, and this app drives it over Spotlite's local API.
+SwiftSpot is the server, keeping the session, playback, the queue and the
+library, and this app drives it over SwiftSpot's local API.
 
 ## Run it
 
-1. Start Spotlite as usual (the installed app, or `cargo run`).
+1. Start SwiftSpot as usual (the installed app, or `cargo run`).
 2. `cd apple && swift run`
 
 It connects to `~/Library/Application Support/me.paolino.spotifast/api.sock`.
@@ -15,7 +15,7 @@ socket:
 
 ```sh
 cargo run --features demo -- --demo &
-SPOTLITE_SOCKET=$(ls -d "$TMPDIR"spotifast-demo-*/state/api.sock | tail -1) swift run
+SWIFTSPOT_SOCKET=$(ls -d "$TMPDIR"spotifast-demo-*/state/api.sock | tail -1) swift run
 ```
 
 ## The API
@@ -49,6 +49,6 @@ from the position simply moving on.
 The player carries `karaoke`: `available`, `on`, `level`, and `status`
 (`off`, `downloading`, `preparing`, `running` or `failed`, with `error`).
 
-Lists Spotlite is still fetching answer with `"loading": true`; ask again.
-The handlers are in `src/app/api.rs`: each reads Spotlite's state or queues
+Lists SwiftSpot is still fetching answer with `"loading": true`; ask again.
+The handlers are in `src/app/api.rs`: each reads SwiftSpot's state or queues
 the same action its window would, so a client gets the window's behaviour.

@@ -123,7 +123,7 @@ fn apply_blocking_proxy(
 }
 
 fn user_agent() -> &'static str {
-    concat!("Spotlite/", env!("CARGO_PKG_VERSION"))
+    concat!("SwiftSpot/", env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]

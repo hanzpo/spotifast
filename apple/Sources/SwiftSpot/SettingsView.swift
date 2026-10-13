@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Spotlite's settings that a front end can change: playback, the
+/// SwiftSpot's settings that a front end can change: playback, the
 /// equalizer, and Home's shelves.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var state: SettingsState?
     @State private var needsApply = false
 
-    /// Settings Spotlite reads when its player starts.
+    /// Settings SwiftSpot reads when its player starts.
     private let engine: Set<String> = ["bitrate", "normalisation", "gapless", "autoplay", "audio_cache", "device_name"]
 
     var body: some View {

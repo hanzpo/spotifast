@@ -1,4 +1,4 @@
-//! The local API other front ends drive Spotlite through.
+//! The local API other front ends drive SwiftSpot through.
 //!
 //! The running app is the server: it owns the Spotify session, playback,
 //! the queue and the library, and a client — the Swift app in `apple/` —
@@ -80,7 +80,7 @@ pub fn exit_with_parent(waker: Waker) {
                 // An orphan is handed to launchd, so its parent changes.
                 // SAFETY: as above.
                 if unsafe { getppid() } != parent {
-                    log::info!("The front end that started Spotlite has gone; quitting");
+                    log::info!("The front end that started SwiftSpot has gone; quitting");
                     PARENT_GONE.store(true, std::sync::atomic::Ordering::Relaxed);
                     waker.wake();
                     return;
@@ -104,7 +104,7 @@ impl Server {
         if UnixStream::connect(path).is_ok() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AddrInUse,
-                "another Spotlite is serving the API",
+                "another SwiftSpot is serving the API",
             ));
         }
         let _ = std::fs::remove_file(path);
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn a_client_gets_its_reply_and_the_events() {
-        let dir = std::env::temp_dir().join(format!("spotlite-api-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("swiftspot-api-{}", std::process::id()));
         let path = dir.join("api.sock");
         let server = Server::start(&path, Waker::default()).unwrap();
         let mut stream = UnixStream::connect(&path).unwrap();

@@ -1780,7 +1780,7 @@ mod tests {
     fn an_inactive_connect_device_keeps_its_engine_session() {
         let mut state = LocalState {
             connected: true,
-            active_client: "Spotlite".into(),
+            active_client: "SwiftSpot".into(),
             ..LocalState::default()
         };
 
@@ -1827,7 +1827,7 @@ mod tests {
             buffer_ms: crate::sink::DEFAULT_BUFFER_MS,
             eq: crate::eq::shared(),
             karaoke: crate::karaoke::Karaoke::shared(),
-            device_name: "Spotlite".into(),
+            device_name: "SwiftSpot".into(),
             bitrate_kbps: 320,
             normalisation: false,
             autoplay: true,

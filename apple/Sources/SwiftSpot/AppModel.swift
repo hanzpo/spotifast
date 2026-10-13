@@ -148,16 +148,16 @@ final class AppModel {
     init() {
         // For screenshots and debugging: the page and panel to start on.
         let environment = ProcessInfo.processInfo.environment
-        if let page = environment["SPOTLITE_ROUTE"], let route = Route(page: page) {
+        if let page = environment["SWIFTSPOT_ROUTE"], let route = Route(page: page) {
             if case .playlist = route { root = route } else if [.home, .search, .recentlyAdded, .allPlaylists, .liked, .albums, .artists, .podcasts, .episodes, .topSongs].contains(route) {
                 root = route
             } else {
                 path = [route]
             }
         }
-        if let query = environment["SPOTLITE_SEARCH"] { searchText = query }
-        panel = environment["SPOTLITE_PANEL"].flatMap(Panel.init(rawValue:))
-        showNowPlaying = environment["SPOTLITE_NOW_PLAYING"] != nil
+        if let query = environment["SWIFTSPOT_SEARCH"] { searchText = query }
+        panel = environment["SWIFTSPOT_PANEL"].flatMap(Panel.init(rawValue:))
+        showNowPlaying = environment["SWIFTSPOT_NOW_PLAYING"] != nil
     }
 
     func connect() async {
@@ -169,7 +169,7 @@ final class AppModel {
             }
             client.onClose = { [weak self] in
                 self?.client = nil
-                self?.connection = .failed("Spotlite stopped.")
+                self?.connection = .failed("SwiftSpot stopped.")
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     await self?.connect()

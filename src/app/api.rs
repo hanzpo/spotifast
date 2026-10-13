@@ -1225,7 +1225,7 @@ impl App {
 
     fn api_hello(&self) -> Value {
         json!({
-            "app": "Spotlite",
+            "app": "SwiftSpot",
             "version": env!("CARGO_PKG_VERSION"),
             "signed_in": self.user.is_some(),
             "auth": match &self.auth {

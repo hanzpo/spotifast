@@ -24,7 +24,7 @@ final class ImageCache {
             // disk keeps them.
             memoryCapacity: 4 << 20, diskCapacity: 512 << 20,
             directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("SpotliteSwift/images"))
+                .appendingPathComponent("SwiftSpot/images"))
         configuration.requestCachePolicy = .returnCacheDataElseLoad
         return URLSession(configuration: configuration)
     }()

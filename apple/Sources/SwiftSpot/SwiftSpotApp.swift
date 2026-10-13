@@ -2,12 +2,12 @@ import AppKit
 import SwiftUI
 
 @main
-struct SpotliteApp: App {
+struct SwiftSpotApp: App {
     @State private var model = AppModel()
 
     /// A probe run, for checking the interface: no Dock icon, never
     /// active, and the window out of sight, so it disturbs nobody.
-    static let probing = ProcessInfo.processInfo.environment["SPOTLITE_PROBE"] != nil
+    static let probing = ProcessInfo.processInfo.environment["SWIFTSPOT_PROBE"] != nil
 
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
 
@@ -24,7 +24,7 @@ struct SpotliteApp: App {
     }
 
     var body: some Scene {
-        Window("Spotlite", id: "main") {
+        Window("SwiftSpot", id: "main") {
             ContentView()
                 .environment(model)
                 .task { await model.connect() }

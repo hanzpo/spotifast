@@ -8,11 +8,11 @@ struct ContentView: View {
         Group {
             switch model.connection {
             case .connecting:
-                ProgressView("Connecting to Spotlite…")
+                ProgressView("Connecting to SwiftSpot…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 ContentUnavailableView {
-                    Label("Can't reach Spotlite", systemImage: "bolt.horizontal.circle")
+                    Label("Can't reach SwiftSpot", systemImage: "bolt.horizontal.circle")
                 } description: {
                     Text(message)
                 } actions: {
@@ -423,7 +423,7 @@ struct EditPlaylistSheet: View {
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             // The engine reads the file; a copy it can always reach.
             let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent("spotlite-cover-\(UUID().uuidString).\(url.pathExtension)")
+                .appendingPathComponent("swiftspot-cover-\(UUID().uuidString).\(url.pathExtension)")
             try? FileManager.default.copyItem(at: url, to: copy)
             model.send("playlist.cover", ["id": playlist.id, "path": copy.path], done: "Uploading the cover")
         }

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build Spotlite, the SwiftUI app with its Rust engine inside, and install
+# Build SwiftSpot, the SwiftUI app with its Rust engine inside, and install
 # it into /Applications.
 #
 #   apple/install.sh
 #
 # The app is one bundle: the SwiftUI front end, and in
-# Contents/Helpers/Spotlite Engine.app the engine, which keeps the Spotify
+# Contents/Helpers/SwiftSpot Engine.app the engine, which keeps the Spotify
 # session and plays the audio. The front end starts the engine out of
 # sight and the engine quits with it. The engine keeps the identifier the
 # keychain already trusts for saved sign-ins, rocks.spotifast.Spotifast,
@@ -16,7 +16,7 @@
 # another .icns file, or to an empty string for none. Set APP_DIR to
 # install somewhere other than /Applications. The bundle is signed with
 # this Mac's Apple Development certificate when it has one, or
-# CODESIGN_IDENTITY when set ("-" signs ad hoc). A running Spotlite is quit
+# CODESIGN_IDENTITY when set ("-" signs ad hoc). A running SwiftSpot is quit
 # first and the new one opened afterwards. BUILD_ONLY=1 builds and checks
 # the bundle without installing it.
 set -euo pipefail
@@ -41,7 +41,7 @@ fi
 # The engine: the Rust app, bundled as packaging/macos/bundle.sh bundles
 # it, kept out of the Dock.
 (cd "$root" && cargo build --release --locked)
-engine="$here/.build/Spotlite Engine.app"
+engine="$here/.build/SwiftSpot Engine.app"
 "$root/packaging/macos/bundle.sh" "$root/target/release/spotifast" "$engine" "$version" >/dev/null
 /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$engine/Contents/Info.plist"
 if [ -n "${ICON:-}" ]; then
@@ -51,10 +51,10 @@ codesign --force --sign "$identity" "$engine"
 
 # The front end around it.
 (cd "$here" && swift build -c release)
-bundle="$here/.build/Spotlite.app"
+bundle="$here/.build/SwiftSpot.app"
 rm -rf "$bundle"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$bundle/Contents/Helpers"
-cp "$(cd "$here" && swift build -c release --show-bin-path)/SpotliteSwift" "$bundle/Contents/MacOS/Spotlite"
+cp "$(cd "$here" && swift build -c release --show-bin-path)/SwiftSpot" "$bundle/Contents/MacOS/SwiftSpot"
 sed "s/__VERSION__/$version/g" "$here/Packaging/Info.plist" > "$bundle/Contents/Info.plist"
 if [ -n "${ICON:-}" ]; then
     cp "$ICON" "$bundle/Contents/Resources/AppIcon.icns"
@@ -69,8 +69,9 @@ if [ -n "${BUILD_ONLY:-}" ]; then
     exit 0
 fi
 
-# Quit what runs now: this app, and the engine or the older Spotlite.
-for name in Spotlite Spotifast; do
+# Quit what runs now: this app, and the engine or the app under its older
+# names, Spotlite and Spotifast.
+for name in SwiftSpot Spotlite Spotifast; do
     if pgrep -xq "$name"; then
         osascript -e "quit app \"$name\"" 2>/dev/null || true
         for _ in $(seq 20); do
@@ -81,8 +82,8 @@ for name in Spotlite Spotifast; do
     fi
 done
 
-rm -rf "$app_dir/Spotlite.app" "$app_dir/Spotifast.app" "$app_dir/Spotlite Swift.app"
+rm -rf "$app_dir/SwiftSpot.app" "$app_dir/Spotlite.app" "$app_dir/Spotifast.app"
 cp -R "$bundle" "$app_dir/"
-codesign --verify --deep --strict "$app_dir/Spotlite.app"
-open "$app_dir/Spotlite.app"
-echo "Installed Spotlite $version in $app_dir"
+codesign --verify --deep --strict "$app_dir/SwiftSpot.app"
+open "$app_dir/SwiftSpot.app"
+echo "Installed SwiftSpot $version in $app_dir"

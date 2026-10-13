@@ -91,7 +91,7 @@ fn push(command: Command) {
 define_class!(
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[name = "SpotliteCapsuleTarget"]
+    #[name = "SwiftSpotCapsuleTarget"]
     struct Target;
 
     impl Target {
@@ -133,7 +133,7 @@ define_class!(
     /// The glass's content, laid out from the top left.
     #[unsafe(super(NSView))]
     #[thread_kind = MainThreadOnly]
-    #[name = "SpotliteCapsuleContent"]
+    #[name = "SwiftSpotCapsuleContent"]
     struct Content;
 
     impl Content {
@@ -168,7 +168,7 @@ define_class!(
     /// or dragged.
     #[unsafe(super(NSView))]
     #[thread_kind = MainThreadOnly]
-    #[name = "SpotliteSeekBar"]
+    #[name = "SwiftSpotSeekBar"]
     struct SeekBar;
 
     impl SeekBar {

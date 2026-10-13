@@ -26,12 +26,12 @@ struct Cli {
 
     /// Start without a window and keep running when the window closes,
     /// playing and serving the local API to a front end such as the Swift
-    /// app, which starts Spotlite this way.
+    /// app, which starts SwiftSpot this way.
     #[arg(long)]
     background: bool,
 
     /// Quit when the process that started this one ends: the front end
-    /// that keeps Spotlite as its engine.
+    /// that keeps SwiftSpot as its engine.
     #[cfg(unix)]
     #[arg(long)]
     exit_with_parent: bool,
@@ -230,7 +230,7 @@ fn run_control(control: Control) -> i32 {
             }
         }
         Err(error) => {
-            eprintln!("Spotlite is not running or does not support remote control: {error}");
+            eprintln!("SwiftSpot is not running or does not support remote control: {error}");
             return 1;
         }
     };
@@ -261,7 +261,7 @@ fn desktop_entry() -> String {
 
 #[cfg(target_os = "linux")]
 const PULSEAUDIO_PROPERTIES: [(&str, &str); 2] = [
-    ("PULSE_PROP_application.name", "Spotlite"),
+    ("PULSE_PROP_application.name", "SwiftSpot"),
     ("PULSE_PROP_stream.description", "Spotify playback"),
 ];
 
@@ -390,11 +390,11 @@ pub(crate) fn run() -> eframe::Result<()> {
         match single_instance::acquire(&waker, link.as_deref(), cli.background) {
             single_instance::Outcome::Only(guard) => Some(guard),
             single_instance::Outcome::Surfaced if cli.background => {
-                log::info!("Spotlite is already running and serving; leaving it be");
+                log::info!("SwiftSpot is already running and serving; leaving it be");
                 return Ok(());
             }
             single_instance::Outcome::Surfaced => {
-                log::info!("Spotlite is already running; asked it to show its window");
+                log::info!("SwiftSpot is already running; asked it to show its window");
                 return Ok(());
             }
         }
@@ -441,10 +441,10 @@ pub(crate) fn run() -> eframe::Result<()> {
     if let Some(name) = cli.device_name {
         settings.device_name = name;
     }
-    // The app used to be called Spotifast; follow the rename unless the
-    // listener picked a device name of their own.
-    if settings.device_name == "Spotifast" {
-        settings.device_name = "Spotlite".to_string();
+    // The app used to be called Spotifast, then Spotlite; follow the
+    // rename unless the listener picked a device name of their own.
+    if matches!(settings.device_name.as_str(), "Spotifast" | "Spotlite") {
+        settings.device_name = "SwiftSpot".to_string();
     }
     spotifast::window::set_custom_titlebar(settings.custom_titlebar);
     // Colour emoji: the fonts are found off this thread. A demo capture
@@ -551,7 +551,7 @@ pub(crate) fn run() -> eframe::Result<()> {
             let options = profile_options(options);
             let persist_memory = options.persist_window;
             eframe::run_native(
-                "Spotlite",
+                "SwiftSpot",
                 options,
                 Box::new(move |cc| {
                     if let Some(gl) = &cc.gl {
@@ -683,7 +683,7 @@ fn native_options(fullscreen: bool, inner_size: Option<[f32; 2]>) -> eframe::Nat
         app_icon()
     };
     let viewport = egui::ViewportBuilder::default()
-        .with_title("Spotlite")
+        .with_title("SwiftSpot")
         .with_app_id(app_id)
         .with_taskbar(true)
         .with_icon(icon);

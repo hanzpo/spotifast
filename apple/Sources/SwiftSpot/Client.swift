@@ -1,6 +1,6 @@
 import Foundation
 
-/// A connection to Spotlite's local API: one JSON object per line over a
+/// A connection to SwiftSpot's local API: one JSON object per line over a
 /// Unix socket. Requests await their reply; events arrive on `onEvent`.
 final class Client: @unchecked Sendable {
     enum Failure: Error, LocalizedError {
@@ -10,17 +10,17 @@ final class Client: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .notRunning: "Spotlite's engine didn't start."
+            case .notRunning: "SwiftSpot's engine didn't start."
             case .server(let message): message
-            case .closed: "The connection to Spotlite closed."
+            case .closed: "The connection to SwiftSpot closed."
             }
         }
     }
 
-    /// Where the running Spotlite listens. `SPOTLITE_SOCKET` points
+    /// Where the running SwiftSpot listens. `SWIFTSPOT_SOCKET` points
     /// elsewhere, such as at a demo instance.
     static var defaultPath: String {
-        if let path = ProcessInfo.processInfo.environment["SPOTLITE_SOCKET"], !path.isEmpty {
+        if let path = ProcessInfo.processInfo.environment["SWIFTSPOT_SOCKET"], !path.isEmpty {
             return path
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -61,7 +61,7 @@ final class Client: @unchecked Sendable {
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         let thread = Thread { [weak self] in self?.readLoop() }
-        thread.name = "spotlite-api"
+        thread.name = "swiftspot-api"
         thread.start()
     }
 

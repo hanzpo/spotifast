@@ -127,7 +127,7 @@ On macOS, build and install the app bundle from a checkout with:
 packaging/macos/install.sh
 ```
 
-It quits a running copy, replaces `/Applications/Spotlite.app`, and opens the
+It quits a running copy, replaces `/Applications/SwiftSpot.app`, and opens the
 new one. When the Spotify app is installed, its icon is used; set `ICON` to
 another `.icns` file to use that instead, or to an empty string to keep the
 bundled icon.

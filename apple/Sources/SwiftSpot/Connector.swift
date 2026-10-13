@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Finds the engine that serves this app, starting it when it isn't
-/// running. The engine, Spotlite's Rust core, keeps the Spotify session
+/// running. The engine, SwiftSpot's Rust core, keeps the Spotify session
 /// and plays the audio; it ships inside this app and runs out of sight.
 @MainActor
 enum Connector {
@@ -12,13 +12,13 @@ enum Connector {
     /// The engine inside this app's bundle.
     static var bundledEngine: URL? {
         let url = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Helpers/Spotlite Engine.app/Contents/MacOS/Spotlite")
+            .appendingPathComponent("Contents/Helpers/SwiftSpot Engine.app/Contents/MacOS/SwiftSpot")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
     /// An engine installed elsewhere, for runs from the build folder.
     static var installedEngine: URL? {
-        let url = URL(fileURLWithPath: "/Applications/Spotlite.app/Contents/Helpers/Spotlite Engine.app/Contents/MacOS/Spotlite")
+        let url = URL(fileURLWithPath: "/Applications/SwiftSpot.app/Contents/Helpers/SwiftSpot Engine.app/Contents/MacOS/SwiftSpot")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
@@ -26,7 +26,7 @@ enum Connector {
         if let client = try? Client() { return client }
         // A demo or another socket named on the command line is never
         // started from here.
-        guard ProcessInfo.processInfo.environment["SPOTLITE_SOCKET"] == nil,
+        guard ProcessInfo.processInfo.environment["SWIFTSPOT_SOCKET"] == nil,
               let executable = bundledEngine ?? installedEngine
         else {
             return try Client()
