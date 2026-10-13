@@ -550,7 +550,9 @@ final class AppModel {
     func remove(_ tracks: [Track], from playlistID: String) {
         send(
             "playlist.remove",
-            ["id": playlistID, "items": tracks.map { ["uri": $0.uri, "position": $0.position] }])
+            // Each row by its place in Spotify's copy, so only it leaves,
+            // not every copy of its song.
+            ["id": playlistID, "items": tracks.map { ["uri": $0.uri, "position": $0.spotifyPosition ?? $0.position] }])
         revision += 1
     }
 
