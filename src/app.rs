@@ -9309,6 +9309,14 @@ impl App {
             Action::SetKaraoke(on) => {
                 self.karaoke.set_enabled(on);
                 self.karaoke_error = None;
+                // A model put in place since startup needs no fetching.
+                #[cfg(target_os = "macos")]
+                if on
+                    && !self.karaoke.has_model()
+                    && crate::karaoke::model::installed(&self.dirs.karaoke_dir())
+                {
+                    self.karaoke.set_loader(Some(karaoke_loader(&self.dirs)));
+                }
                 if on && !self.karaoke.has_model() && !self.karaoke_fetching {
                     self.karaoke_fetching = true;
                     self.backend.send(Command::KaraokeModel);
