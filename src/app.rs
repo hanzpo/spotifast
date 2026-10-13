@@ -8603,6 +8603,54 @@ impl App {
             } => {
                 self.add_to_playlist_now(playlist_id, playlist_name, items, position);
             }
+            Action::RemoveRowsFromPlaylist { playlist_id, rows } => {
+                let snapshot_id = self
+                    .playlist_pages
+                    .get(&playlist_id)
+                    .and_then(|page| page.playlist.get())
+                    .and_then(|playlist| playlist.snapshot_id.clone());
+                self.prepare_playlist_mutation(&playlist_id);
+                if let Some(page) = self.playlist_pages.get_mut(&playlist_id) {
+                    let mut gone = rows.clone();
+                    gone.sort_by_key(|row| std::cmp::Reverse(row.0));
+                    gone.dedup_by_key(|row| row.0);
+                    let mut removed = 0u32;
+                    for (position, uri) in gone {
+                        let Some(index) = position.checked_sub(page.items.base_offset) else {
+                            continue;
+                        };
+                        let index = index as usize;
+                        if page
+                            .items
+                            .items
+                            .get(index)
+                            .and_then(|item| item.playable())
+                            .map(|item| item.uri())
+                            == Some(uri.as_str())
+                        {
+                            page.items.remove_at(index);
+                            removed += 1;
+                        }
+                    }
+                    page.items.total = page.items.total.map(|total| total.saturating_sub(removed));
+                    page.items.next_offset = page
+                        .items
+                        .next_offset
+                        .map(|offset| offset.saturating_sub(removed));
+                    if let Loadable::Loaded(playlist) = &mut page.playlist
+                        && let Some(count) =
+                            playlist.items_count.as_mut().or(playlist.tracks.as_mut())
+                    {
+                        count.total = count.total.saturating_sub(removed);
+                    }
+                }
+                self.playlist_busy = true;
+                self.backend.api(ApiRequest::RemovePlaylistRows {
+                    playlist_id,
+                    rows,
+                    snapshot_id,
+                });
+            }
             Action::RemoveFromPlaylist { playlist_id, uris } => {
                 let snapshot_id = self
                     .playlist_pages
@@ -19842,6 +19890,58 @@ mod tests {
         app.receive_playlist_cache_stored("alice", "large", 0, "current", true);
         assert_eq!(app.playlist_pages["large"].cache_saved_through, Some(550));
         assert_eq!(app.playlist_pages["large"].cache_saved_rows, 2);
+    }
+
+    #[test]
+    fn removing_one_copy_of_a_song_keeps_the_others() {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        let mut items = PagedList::default();
+        items.restore_cached(
+            vec![
+                cached_playlist_row("spotify:track:twice"),
+                cached_playlist_row("spotify:track:between"),
+                cached_playlist_row("spotify:track:twice"),
+            ],
+            3,
+            None,
+        );
+        app.playlist_pages.insert(
+            "edit".into(),
+            PlaylistPage {
+                items,
+                playlist: Loadable::Loaded(Playlist {
+                    items_count: Some(TrackCount { total: 3 }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        let ctx = egui::Context::default();
+        app.apply(
+            Action::RemoveRowsFromPlaylist {
+                playlist_id: "edit".into(),
+                rows: vec![(2, "spotify:track:twice".into())],
+            },
+            &ctx,
+        );
+        // A row that no longer holds the song named stays.
+        app.apply(
+            Action::RemoveRowsFromPlaylist {
+                playlist_id: "edit".into(),
+                rows: vec![(0, "spotify:track:between".into())],
+            },
+            &ctx,
+        );
+        let page = &app.playlist_pages["edit"];
+        let left: Vec<&str> = page
+            .items
+            .items
+            .iter()
+            .filter_map(|item| item.playable().map(|item| item.uri()))
+            .collect();
+        assert_eq!(left, ["spotify:track:twice", "spotify:track:between"]);
+        assert_eq!(page.items.total, Some(2));
     }
 
     #[test]

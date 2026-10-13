@@ -384,6 +384,74 @@ pub async fn user_display_name(session: &Session, user_id: &str) -> Option<Strin
         .map(str::to_string)
 }
 
+/// Removes the given rows of a playlist, each by its position and the
+/// song there, as Spotify's own apps edit a playlist: the Web API removes
+/// a song only with every copy of it. Spotify refuses the change when a
+/// row no longer holds its song. Gives the playlist's new snapshot id.
+pub async fn remove_rows(
+    session: &Session,
+    id: &str,
+    rows: &[(u32, String)],
+) -> anyhow::Result<Option<String>> {
+    use librespot_protocol::playlist4_external::{
+        ChangeInfo, Delta, Item, ListChanges, Op, Rem, SelectedListContent, op::Kind,
+    };
+    let list = window(session, id, 0, 0)
+        .await
+        .map_err(|failure| match failure {
+            Failure::Definitive(error) => anyhow::anyhow!("{error}"),
+            Failure::Retry(error) => error,
+        })?;
+    let revision = list.revision.clone();
+    let mut rows = rows.to_vec();
+    // From the end, so each position still names its row.
+    rows.sort_by_key(|row| std::cmp::Reverse(row.0));
+    rows.dedup_by_key(|row| row.0);
+    let ops = rows
+        .into_iter()
+        .map(|(position, uri)| {
+            let mut item = Item::new();
+            item.set_uri(uri);
+            let mut rem = Rem::new();
+            rem.set_from_index(i32::try_from(position).unwrap_or(i32::MAX));
+            rem.set_length(1);
+            rem.items.push(item);
+            let mut op = Op::new();
+            op.set_kind(Kind::REM);
+            op.rem = protobuf::MessageField::some(rem);
+            op
+        })
+        .collect();
+    let mut delta = Delta::new();
+    delta.set_base_version(revision.clone());
+    delta.ops = ops;
+    delta.info = protobuf::MessageField::some(ChangeInfo::new());
+    let mut changes = ListChanges::new();
+    changes.set_base_revision(revision);
+    changes.deltas.push(delta);
+    changes.set_want_resulting_revisions(true);
+    let mut headers = http::HeaderMap::new();
+    headers.insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/x-protobuf"),
+    );
+    let answer = session
+        .spclient()
+        .request(
+            &http::Method::POST,
+            &format!("/playlist/v2/playlist/{id}/changes"),
+            Some(headers),
+            Some(&changes.write_to_bytes()?),
+        )
+        .await?;
+    let content = SelectedListContent::parse_from_bytes(&answer)?;
+    Ok(content
+        .resulting_revisions
+        .last()
+        .or(content.revision.as_ref())
+        .map(|revision| snapshot(revision)))
+}
+
 /// Someone's profile and the public playlists on it, from the profile view
 /// Spotify's clients read.
 pub async fn user_profile(session: &Session, user_id: &str) -> Result<UserProfile, Failure> {

@@ -1027,6 +1027,31 @@ impl App {
             }
             "playlist.remove" => {
                 let id = param_str(params, "id")?.to_string();
+                // Rows named by their place in Spotify's copy leave alone;
+                // other copies of their songs stay.
+                let rows: Option<Vec<(u32, String)>> = params
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .filter(|items| !items.is_empty())
+                    .map(|items| {
+                        items
+                            .iter()
+                            .map(|item| {
+                                Some((
+                                    u32::try_from(item.get("position")?.as_u64()?).ok()?,
+                                    item.get("uri")?.as_str()?.to_string(),
+                                ))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or(None);
+                if let Some(rows) = rows {
+                    self.actions.push(Action::RemoveRowsFromPlaylist {
+                        playlist_id: id,
+                        rows,
+                    });
+                    return ok();
+                }
                 let mut uris: Vec<String> = params
                     .get("items")
                     .and_then(Value::as_array)

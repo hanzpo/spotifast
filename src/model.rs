@@ -456,6 +456,14 @@ impl<T> PagedList<T> {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    /// Takes out the loaded item at `index`, if there is one.
+    pub fn remove_at(&mut self, index: usize) -> Option<T> {
+        (index < self.items.len()).then(|| {
+            self.revision = self.revision.wrapping_add(1);
+            self.items.remove(index)
+        })
+    }
+
     pub fn reorder(&mut self, from: usize, to: usize) {
         if from < self.items.len() && to <= self.items.len() {
             let item = self.items.remove(from);
@@ -1073,6 +1081,12 @@ pub enum Action {
     MoveInQueue {
         from: usize,
         to: usize,
+    },
+    /// Remove the given rows of a playlist, each by its position in
+    /// Spotify's copy and the song there, leaving other copies of a song.
+    RemoveRowsFromPlaylist {
+        playlist_id: String,
+        rows: Vec<(u32, String)>,
     },
     /// Remove one row of "Playing next". Like a move, only while the local
     /// player is the active target: the queue is rewritten by clearing it

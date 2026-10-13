@@ -198,6 +198,13 @@ pub enum ApiRequest {
         uris: Vec<String>,
         snapshot_id: Option<String>,
     },
+    /// Rows of a playlist by position, over the session where it can; the
+    /// Web API can only take every copy of their songs.
+    RemovePlaylistRows {
+        playlist_id: String,
+        rows: Vec<(u32, String)>,
+        snapshot_id: Option<String>,
+    },
     ReorderPlaylist {
         playlist_id: String,
         range_start: u32,
@@ -3426,6 +3433,7 @@ fn operation_for(api: &ApiGateway, request: &ApiRequest) -> Operation {
         }
         ApiRequest::AddToPlaylist { playlist_id, .. }
         | ApiRequest::RemoveFromPlaylist { playlist_id, .. }
+        | ApiRequest::RemovePlaylistRows { playlist_id, .. }
         | ApiRequest::ReorderPlaylist { playlist_id, .. } => {
             Operation::PlaylistMutation(api.playlist_access(playlist_id))
         }
@@ -3591,6 +3599,36 @@ async fn handle(
     }) && let Some(response) = pathfinder_answer(engine, &request).await
     {
         return (response, None);
+    }
+    // A playlist's rows leave one by one over the session, as Spotify's
+    // own apps remove them.
+    if let ApiRequest::RemovePlaylistRows {
+        playlist_id, rows, ..
+    } = &request
+        && let Some(engine) = engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    {
+        match tokio::time::timeout(
+            SESSION_READ_TIMEOUT,
+            session_reads::remove_rows(engine.session(), playlist_id, rows),
+        )
+        .await
+        {
+            Ok(Ok(snapshot)) => {
+                return (
+                    ApiResponse::PlaylistItemsChanged {
+                        id: playlist_id.clone(),
+                        message: "Removed from playlist".to_string(),
+                        result: Ok(snapshot),
+                    },
+                    None,
+                );
+            }
+            Ok(Err(error)) => {
+                log::warn!("removing playlist rows over the session failed: {error:#}")
+            }
+            Err(_) => log::warn!("removing playlist rows over the session timed out"),
+        }
     }
     // An artist's top songs come over the session where it can: the Web
     // API serves them only from the shared app, whose rate limit can hold
@@ -3791,6 +3829,23 @@ async fn handle(
             id: playlist_id,
             message: "Removed from playlist".to_string(),
         },
+        // Without the session, every copy of the rows' songs goes.
+        ApiRequest::RemovePlaylistRows {
+            playlist_id,
+            rows,
+            snapshot_id,
+        } => {
+            let uris: Vec<String> = rows.into_iter().map(|(_, uri)| uri).collect();
+            ApiResponse::PlaylistItemsChanged {
+                result: routed!(remove_playlist_items(
+                    &playlist_id,
+                    &uris,
+                    snapshot_id.as_deref()
+                )),
+                id: playlist_id,
+                message: "Removed from playlist".to_string(),
+            }
+        }
         ApiRequest::ReorderPlaylist {
             playlist_id,
             range_start,
