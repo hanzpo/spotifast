@@ -8534,6 +8534,20 @@ impl App {
                 }
             }
             Action::SetSavedMany { uris, saved } => {
+                // Unliking a song unlikes it under every release saved, as
+                // the heart for the playing song does: one left saved keeps
+                // the song liked.
+                let uris = if saved {
+                    uris
+                } else {
+                    let mut seen = std::collections::HashSet::new();
+                    uris.iter()
+                        .flat_map(|uri| {
+                            std::iter::once(uri.clone()).chain(self.saved_toggle_targets(uri))
+                        })
+                        .filter(|uri| seen.insert(uri.clone()))
+                        .collect()
+                };
                 let mut changed_tracks = false;
                 for uri in &uris {
                     self.set_saved_state(uri.clone(), saved);
@@ -19181,6 +19195,18 @@ mod tests {
 
         assert_eq!(app.is_saved(playing_uri), Some(true));
         assert_eq!(app.saved_toggle_targets(playing_uri), vec![saved_uri]);
+
+        // A row showing the other release unlikes the saved one.
+        app.backend.set_offline(true);
+        app.apply(
+            Action::SetSavedMany {
+                uris: vec![playing_uri.into()],
+                saved: false,
+            },
+            &egui::Context::default(),
+        );
+        assert_eq!(app.is_saved(playing_uri), Some(false));
+        assert_eq!(app.is_saved(saved_uri), Some(false));
     }
 
     #[test]
