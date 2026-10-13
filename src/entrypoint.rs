@@ -446,9 +446,6 @@ pub(crate) fn run() -> eframe::Result<()> {
     if settings.device_name == "Spotifast" {
         settings.device_name = "Spotlite".to_string();
     }
-    if settings.web_client_id.is_none() {
-        settings.web_client_id = Some(spotifast::auth::BUILT_IN_PERSONAL_CLIENT_ID.to_string());
-    }
     spotifast::window::set_custom_titlebar(settings.custom_titlebar);
     // Colour emoji: the fonts are found off this thread. A demo capture
     // draws every picture in the frame that shows it.
