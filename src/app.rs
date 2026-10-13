@@ -566,6 +566,9 @@ pub struct App {
     /// The songs behind the links last copied from a track table, so a
     /// paste of those links adds rows with their names straight away.
     copied_songs: Vec<PlayableItem>,
+    /// The songs a client described for the playlist it is creating, so
+    /// the new playlist's rows are whole at once.
+    created_with: Vec<PlayableItem>,
     /// Pasted song links waiting for Spotify to describe the songs this
     /// app has not seen, before they are added to their playlist.
     pending_pastes: Vec<PendingPaste>,
@@ -950,6 +953,7 @@ impl App {
             editable_by_grant: std::collections::BTreeSet::new(),
             pending_link: None,
             copied_songs: Vec::new(),
+            created_with: Vec::new(),
             pending_pastes: Vec::new(),
             collapsed_folders: session.collapsed_folders.clone(),
             eq,
@@ -5393,9 +5397,17 @@ impl App {
                         if let Some(Dialog::CreatePlaylist { add_uris, .. }) = self.dialog.take()
                             && !add_uris.is_empty()
                         {
+                            let described = std::mem::take(&mut self.created_with);
                             let items = add_uris
                                 .iter()
-                                .map(|uri| self.known_song(uri).unwrap_or_else(|| bare_item(uri)))
+                                .map(|uri| {
+                                    described
+                                        .iter()
+                                        .find(|item| item.uri() == uri)
+                                        .cloned()
+                                        .or_else(|| self.known_song(uri))
+                                        .unwrap_or_else(|| bare_item(uri))
+                                })
                                 .collect();
                             self.add_to_playlist_now(
                                 playlist.id.clone(),

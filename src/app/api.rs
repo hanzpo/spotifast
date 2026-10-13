@@ -983,13 +983,26 @@ impl App {
 
             // ---- playlists -------------------------------------------------
             "playlist.create" => {
+                // Songs come as URIs, or described as for playlist.add so
+                // the new playlist's rows show whole.
+                let described: Vec<PlayableItem> = params
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .map(|items| items.iter().filter_map(described_track).collect())
+                    .unwrap_or_default();
+                let mut add_uris: Vec<String> = described
+                    .iter()
+                    .map(|item| item.uri().to_string())
+                    .collect();
+                add_uris.extend(param_strings(params, "uris"));
+                self.created_with = described;
                 self.actions.push(Action::CreatePlaylist {
                     name: param_str(params, "name")?.to_string(),
                     public: params
                         .get("public")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
-                    add_uris: param_strings(params, "uris"),
+                    add_uris,
                 });
                 ok()
             }

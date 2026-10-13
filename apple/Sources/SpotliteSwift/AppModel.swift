@@ -531,7 +531,12 @@ final class AppModel {
     func createPlaylist(named name: String, isPublic: Bool, with tracks: [Track] = []) {
         send(
             "playlist.create",
-            ["name": name, "public": isPublic, "uris": tracks.map(\.uri)],
+            // Songs described, as for adding, so the new rows show whole.
+            [
+                "name": name, "public": isPublic,
+                "items": tracks.filter { !$0.isEpisode }.map(\.described),
+                "uris": tracks.filter(\.isEpisode).map(\.uri),
+            ],
             done: "Created “\(name)”")
     }
 
