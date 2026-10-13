@@ -584,6 +584,10 @@ final class AppModel {
     func delete(_ playlist: Playlist) {
         if route == .playlist(playlist.id) { back() }
         if root == .playlist(playlist.id) { root = .home }
+        // Back and Forward never lead to a playlist that's gone.
+        let gone = Route.playlist(playlist.id)
+        path.removeAll { $0 == gone }
+        forwardStack.removeAll { $0 == gone }
         send("playlist.delete", ["id": playlist.id], done: "Removed “\(playlist.name)”")
     }
 
