@@ -330,7 +330,10 @@ impl App {
             return;
         };
         for request in server.take_requests() {
-            let result = self.answer(&request);
+            let mut result = self.answer(&request);
+            if let Ok(value) = &mut result {
+                self.mark_saved(value);
+            }
             server.reply(&request, result);
         }
         if server.has_clients() {
@@ -447,6 +450,35 @@ impl App {
             self.api_pushed.toast = Some(latest.max(since.unwrap_or(latest)));
         } else if since.is_none() {
             self.api_pushed.toast = Some(std::time::Instant::now());
+        }
+    }
+
+    /// Marks every song and episode in an answer with whether it is in the
+    /// library, as far as the app knows: pages ask Spotify for that as
+    /// they load, and a like or an unlike changes it at once.
+    fn mark_saved(&self, value: &mut Value) {
+        match value {
+            Value::Object(object) => {
+                let playable = matches!(
+                    object.get("kind").and_then(Value::as_str),
+                    Some("track" | "episode")
+                );
+                if playable
+                    && let Some(uri) = object.get("uri").and_then(Value::as_str)
+                    && let Some(saved) = self.is_saved(uri)
+                {
+                    object.insert("saved".into(), json!(saved));
+                }
+                for child in object.values_mut() {
+                    self.mark_saved(child);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    self.mark_saved(item);
+                }
+            }
+            _ => {}
         }
     }
 
