@@ -498,7 +498,10 @@ final class AppModel {
         for attempt in 0..<600 {
             guard let state = try? await call("lyrics.get", as: LyricsState.self) else { return }
             lyrics = state
-            if !state.loading { return }
+            // A song just played here is shown before the engine has moved
+            // to it, and its answer can still be the last song's: ask
+            // again, for a while, until it is this song's.
+            if !state.loading, state.uri == player.uri || !player.hasSong || attempt >= 30 { return }
             try? await Task.sleep(for: pollDelay(attempt))
             if Task.isCancelled { return }
         }
