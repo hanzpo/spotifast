@@ -113,7 +113,7 @@ struct HistoryList: View {
                     .onAppear {
                         if index == (plays?.tracks.count ?? 0) - 1, plays?.more == true {
                             model.send("library.recent_more")
-                            Task { try? await Task.sleep(for: .seconds(1)); await load() }
+                            Task { await loadMore(after: plays?.tracks.count ?? 0) }
                         }
                     }
             }
@@ -134,6 +134,18 @@ struct HistoryList: View {
             if !next.loading { return }
             try? await Task.sleep(for: pollDelay(attempt))
             if Task.isCancelled { return }
+        }
+    }
+
+    /// Waits for the next page of plays: the engine says it is loading only
+    /// while it has none, so wait for more rows, or for there to be no more.
+    private func loadMore(after count: Int) async {
+        for attempt in 0..<60 {
+            try? await Task.sleep(for: pollDelay(attempt))
+            if Task.isCancelled { return }
+            guard let next = try? await model.call("library.recent", as: RecentPlays.self) else { return }
+            plays = next
+            if next.tracks.count > count || next.more != true { return }
         }
     }
 }
