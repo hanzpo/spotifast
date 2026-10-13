@@ -36,7 +36,9 @@ struct HomeView: View {
         Loader(method: "home.get", loading: { $0.loading }) { (home: HomePage, _) in
             PageScroll {
                 PageTitle(text: "Home")
-                VStack(alignment: .leading, spacing: 34) {
+                // Spotify's Home runs to some twenty shelves: only those in
+                // sight are built, and so only their covers decoded.
+                LazyVStack(alignment: .leading, spacing: 34) {
                     ForEach(home.shelves) { shelf in
                         if let cards = shelf.cards, !cards.isEmpty {
                             ShelfView(title: shelf.title, cards: cards)

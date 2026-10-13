@@ -34,8 +34,10 @@ final class ImageCache {
     }
 
     /// The size steps covers are decoded at, in pixels, so views of
-    /// nearly the same size share one bitmap.
-    private static let steps = [64, 128, 256, 512, 1024, 2048]
+    /// nearly the same size share one bitmap. A shelf card on a Retina
+    /// screen is about 340 pixels across: decoded at 384, not 512, it
+    /// costs little more than half.
+    private static let steps = [64, 128, 192, 256, 384, 512, 768, 1024, 2048]
 
     private static func step(for pixels: CGFloat) -> Int {
         steps.first { CGFloat($0) >= pixels } ?? steps[steps.count - 1]
