@@ -4133,6 +4133,29 @@ async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiR
                 .1),
             id: id.clone(),
         },
+        ApiRequest::Album { id } => ApiResponse::Album {
+            result: Ok(ask(crate::pathfinder::album_with_songs(session, id)).await?),
+            id: id.clone(),
+        },
+        ApiRequest::AlbumTracks {
+            id,
+            offset,
+            generation,
+        } => ApiResponse::AlbumTracks {
+            result: Ok(ask(crate::pathfinder::album_tracks(session, id, *offset)).await?),
+            id: id.clone(),
+            offset: *offset,
+            generation: *generation,
+        },
+        ApiRequest::AlbumQueueTracks {
+            id,
+            offset,
+            request,
+        } => ApiResponse::AlbumQueueTracks {
+            result: Ok(ask(crate::pathfinder::album_tracks(session, id, *offset)).await?),
+            offset: *offset,
+            request: *request,
+        },
         ApiRequest::RelatedArtists { id } => ApiResponse::RelatedArtists {
             id: id.clone(),
             result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),

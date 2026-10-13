@@ -1021,6 +1021,115 @@ fn album_names(value: &Value, names: &mut std::collections::HashMap<String, Stri
     }
 }
 
+/// How many songs a page of an album holds, as the Web API pages them.
+const ALBUM_PAGE: u32 = 50;
+
+/// An album with its first page of songs, as Spotify's album page shows it.
+pub async fn album_with_songs(session: &Session, id: &str) -> anyhow::Result<Album> {
+    let data = album_page(session, id, 0).await?;
+    let mut found =
+        album_header(&data["albumUnion"]).ok_or_else(|| anyhow!("Spotify has no album {id}"))?;
+    found.tracks = Some(album_songs(&data["albumUnion"], &found, 0));
+    Ok(found)
+}
+
+/// A page of an album's songs from `offset`.
+pub async fn album_tracks(session: &Session, id: &str, offset: u32) -> anyhow::Result<Page<Track>> {
+    let data = album_page(session, id, offset).await?;
+    let found =
+        album_header(&data["albumUnion"]).ok_or_else(|| anyhow!("Spotify has no album {id}"))?;
+    Ok(album_songs(&data["albumUnion"], &found, offset))
+}
+
+async fn album_page(session: &Session, id: &str, offset: u32) -> anyhow::Result<Value> {
+    query(
+        session,
+        "getAlbum",
+        json!({
+            "uri": format!("spotify:album:{id}"),
+            "locale": "",
+            "offset": offset,
+            "limit": ALBUM_PAGE,
+        }),
+    )
+    .await
+}
+
+fn album_header(data: &Value) -> Option<Album> {
+    let uri = data["uri"].as_str()?;
+    let date = data["date"]["isoString"].as_str().map(|date| {
+        // As precise as Spotify knows it, as the Web API gives it.
+        let precise = match data["date"]["precision"].as_str() {
+            Some("YEAR") => 4,
+            Some("MONTH") => 7,
+            _ => 10,
+        };
+        date.get(..precise).unwrap_or(date).to_string()
+    });
+    Some(Album {
+        id: id_of(uri, "album")?,
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        album_type: data["type"].as_str().map(str::to_lowercase),
+        total_tracks: data["tracksV2"]["totalCount"]
+            .as_u64()
+            .map(|total| total as u32),
+        images: images(&data["coverArt"]["sources"]),
+        artists: artist_refs(&data["artists"]),
+        release_date: date,
+        label: data["label"]
+            .as_str()
+            .filter(|label| !label.is_empty())
+            .map(str::to_string),
+        copyrights: data["copyright"]["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|copyright| crate::api::models::Copyright {
+                text: copyright["text"].as_str().unwrap_or_default().to_string(),
+                kind: copyright["type"].as_str().unwrap_or_default().to_string(),
+            })
+            .collect(),
+        ..Default::default()
+    })
+}
+
+/// The album's songs on this page, each knowing its album.
+fn album_songs(data: &Value, album: &Album, offset: u32) -> Page<Track> {
+    let items: Vec<Track> = data["tracksV2"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let song = &item["track"];
+            let mut found = track(song)?;
+            found.track_number = song["trackNumber"].as_u64().map(|number| number as u32);
+            found.disc_number = song["discNumber"].as_u64().map(|number| number as u32);
+            found.album = Some(Album {
+                id: album.id.clone(),
+                name: album.name.clone(),
+                uri: album.uri.clone(),
+                images: album.images.clone(),
+                album_type: album.album_type.clone(),
+                release_date: album.release_date.clone(),
+                ..Default::default()
+            });
+            Some(found)
+        })
+        .collect();
+    let total = data["tracksV2"]["totalCount"]
+        .as_u64()
+        .map_or(offset + items.len() as u32, |total| total as u32);
+    Page {
+        next: (offset + (items.len() as u32) < total && !items.is_empty())
+            .then(|| "pathfinder".to_string()),
+        limit: ALBUM_PAGE,
+        offset,
+        total,
+        items,
+    }
+}
+
 /// The artists Spotify relates to one, as its artist page lists them.
 pub async fn related_artists(session: &Session, id: &str) -> anyhow::Result<Vec<Artist>> {
     let data = query(
@@ -1577,6 +1686,39 @@ mod tests {
         assert_eq!(top[0].name, "Empire State Of Mind");
         assert_eq!(top[0].album.as_ref().unwrap().id, "2CUT0104gySOIvqwtXeFsX");
         assert!(overview(&json!({})).is_none());
+    }
+
+    #[test]
+    fn an_album_reads_with_its_songs_knowing_their_album() {
+        let union = json!({
+            "uri": "spotify:album:6ZG5lRT77aJ3btmArcykra",
+            "name": "Parachutes",
+            "type": "ALBUM",
+            "date": { "isoString": "2000-07-10T00:00:00Z", "precision": "DAY" },
+            "label": "Parlophone UK",
+            "copyright": { "items": [{ "text": "2000 Parlophone", "type": "C" }] },
+            "coverArt": { "sources": [{ "url": "https://i.scdn.co/image/p", "width": 300, "height": 300 }] },
+            "artists": { "items": [{ "uri": "spotify:artist:4gzpq5DPGxSnKTe4SA8HAU", "profile": { "name": "Coldplay" } }] },
+            "tracksV2": { "totalCount": 60, "items": [{ "track": {
+                "uri": "spotify:track:3AJwUDP919kvQ9QcozQPxg",
+                "name": "Yellow",
+                "trackNumber": 5,
+                "discNumber": 1,
+                "duration": { "totalMilliseconds": 266773 },
+                "artists": { "items": [] }
+            } }] }
+        });
+        let album = album_header(&union).unwrap();
+        assert_eq!(album.release_date.as_deref(), Some("2000-07-10"));
+        assert_eq!(album.label.as_deref(), Some("Parlophone UK"));
+        assert_eq!(album.copyrights[0].kind, "C");
+        assert_eq!(album.total_tracks, Some(60));
+        let songs = album_songs(&union, &album, 50);
+        assert_eq!(songs.offset, 50);
+        assert!(songs.next.is_some(), "51 of 60");
+        let song = &songs.items[0];
+        assert_eq!(song.track_number, Some(5));
+        assert_eq!(song.album.as_ref().unwrap().name, "Parachutes");
     }
 
     #[test]
