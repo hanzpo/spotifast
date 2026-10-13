@@ -1403,9 +1403,16 @@ impl App {
     }
 
     fn liked_context(&self) -> Option<String> {
-        self.user
+        // The account the Web API names, or before it has, the one signed in.
+        let account = self
+            .user
             .as_ref()
-            .map(|user| format!("spotify:user:{}:collection", user.id))
+            .map(|user| user.id.as_str())
+            .or(match &self.auth {
+                crate::backend::AuthStatus::Connected { username } => Some(username.as_str()),
+                _ => None,
+            })?;
+        Some(format!("spotify:user:{account}:collection"))
     }
 
     fn api_liked(&self) -> Value {
@@ -1736,6 +1743,7 @@ impl App {
         // app makes up in its place (Made for You, what was played
         // recently, the recommendations) stand only without it.
         let spotify = home.spotify.get();
+        let liked = self.liked_context();
         for (index, section) in spotify.into_iter().flatten().enumerate() {
             use crate::pathfinder::HomeItem;
             let cards: Vec<Value> = section
@@ -1745,7 +1753,9 @@ impl App {
                     HomeItem::LikedSongs(images) => card(
                         "liked",
                         "liked",
-                        "spotify:collection:tracks",
+                        // What playing it plays: the context the engine
+                        // knows as Liked Songs.
+                        liked.as_deref().unwrap_or("spotify:collection:tracks"),
                         "Liked Songs",
                         Some("Playlist".into()),
                         pick_image(images, CARD),
