@@ -3575,9 +3575,13 @@ async fn handle(
     }
     // What Spotify's own GraphQL service answers, as its desktop app asks
     // it, comes from there: the Web API serves it only from the shared app.
-    if let Some(engine) =
-        engine.filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
-        && let Some(response) = pathfinder_answer(engine, &request).await
+    // It answers for the session's account, so it needn't wait for the
+    // shared app to say whose account the Web API's is, which a rate limit
+    // can hold back at start-up; it only mustn't answer for another.
+    if let Some(engine) = engine.filter(|engine| {
+        api.account()
+            .is_none_or(|account| account.as_str() == engine.session().username())
+    }) && let Some(response) = pathfinder_answer(engine, &request).await
     {
         return (response, None);
     }
