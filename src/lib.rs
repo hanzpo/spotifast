@@ -18,6 +18,7 @@ pub mod home_cache;
 pub mod http;
 pub mod i18n;
 pub mod images;
+pub mod karaoke;
 pub mod liked;
 pub mod limiter;
 pub mod link;
