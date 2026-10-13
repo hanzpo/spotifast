@@ -25,6 +25,7 @@ Spotifast follows each platform's conventions. On Linux:
 | Audio cache | `~/.cache/spotifast/audio/` | Always |
 | Artwork cache | `~/.cache/spotifast/art/` | Always |
 | Lyrics cache | `~/.cache/spotifast/lyrics/` | Always |
+| Karaoke's vocal model (macOS) | `~/Library/Caches/me.paolino.spotifast/karaoke/` | Always; downloaded again when karaoke is next turned on |
 | Account-scoped playlist page cache | `~/.cache/spotifast/playlists/<account-id>/` | Always |
 | Account-scoped Home shelves and library rows | `~/.cache/spotifast/home/` | Always |
 | Last run's log | `~/.local/state/spotifast/spotifast.log` | Always |
@@ -248,6 +249,7 @@ main fields are:
 | `eq_preamp_db` | `0` | The preamp, in decibels, -12 to 12 |
 | `eq_bands_db` | ten zeros | The bands from 60 Hz to 16 kHz, in decibels, -12 to 12 |
 | `balance` | `0` | Left to right, -1 to 1, for local playback; no longer set in the app, a saved value still applies |
+| `karaoke_vocal_level` | `0` | How much of the voice karaoke leaves, 0 to 1 |
 | `mono` | `false` | Play both channels the same; no longer set in the app, a saved value still applies |
 | `keep_playing_in_background` | `true` | Close to tray (Windows and Linux; macOS always quits) |
 | `mac_notch_widget` | `false` | Show interactive Now Playing widget when hovering over the MacBook notch (macOS only) |

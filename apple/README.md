@@ -37,6 +37,7 @@ from the position simply moving on.
 | `player.repeat` | `mode`: `off`, `context`, `track` | |
 | `player.like` | `uri`? (the playing song by default) | |
 | `player.play` | `context`? `uri`? `index`? | |
+| `karaoke.set` | `on`? `level`? (voice kept, 0 to 1) | |
 | `queue.add` | `uri`, `name`? | |
 | `library.playlists` | | `playlists`, `liked_context` |
 | `library.liked` | | `tracks`, `total`, `more`, `context` |
@@ -44,6 +45,9 @@ from the position simply moving on.
 | `playlist.get` | `id` | `playlist`, `tracks`, `total`, `more` |
 | `album.get` | `id` | `album`, `tracks`, `more` |
 | `page.more` | `page`, e.g. `playlist:ID`, `liked` | |
+
+The player carries `karaoke`: `available`, `on`, `level`, and `status`
+(`off`, `downloading`, `preparing`, `running` or `failed`, with `error`).
 
 Lists Spotlite is still fetching answer with `"loading": true`; ask again.
 The handlers are in `src/app/api.rs`: each reads Spotlite's state or queues

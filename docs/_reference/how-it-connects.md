@@ -123,8 +123,26 @@ current-track pickup.
   Like and Unlike are kept over lagging reads until Spotify confirms them.
 - Spotifast has no telemetry, analytics, or hosted service. When the lyrics
   panel is open and Spotify has no lyrics, it sends the track's artist, title,
-  album, and length to [lrclib.net](https://lrclib.net). It does not check
-  for or download updates.
+  album, and length to [lrclib.net](https://lrclib.net). The first time
+  karaoke is turned on, on a Mac, it downloads the vocal model (33 MB) from a
+  fixed revision of
+  [gyoom/UVR-MDX-CoreML](https://huggingface.co/gyoom/UVR-MDX-CoreML) on
+  Hugging Face and checks it against digests built into the app; nothing
+  about you or what you play is sent. It does not check for or download
+  updates.
+
+## Karaoke
+
+Karaoke takes the voice out of what plays on this Mac. UVR's MDX-Net
+"Voc FT" model runs through Core ML on the Neural Engine, on a thread of
+its own, over windows of about six seconds of the decoded song, before the
+equalizer. Each run hears a quarter of a second past the stretch it
+separates, so the stage holds about a second of sound: librespot decodes
+that far ahead of what is heard. Positions are reported less what karaoke
+holds, and a gapless change of track is shown once the new track is heard.
+A seek or skip discards what it holds; a pause keeps it, and the end of the
+music plays it out. A model that falls behind or fails leaves the music as
+it is rather than hold it up.
 
 ## Collection loading and artwork
 

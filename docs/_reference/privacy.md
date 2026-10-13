@@ -42,6 +42,11 @@ Spotifast connects only to the services below.
 - **LRCLIB.** When the lyrics panel is open and Spotify has no lyrics for the
   song, Spotifast sends its artist, title, album and length to
   [lrclib.net](https://lrclib.net). Nothing identifying you is included.
+- **Hugging Face.** The first time you turn karaoke on, on a Mac, Spotifast
+  downloads its vocal model from
+  [huggingface.co](https://huggingface.co/gyoom/UVR-MDX-CoreML). The
+  request carries nothing about you or what you play, and the voice is taken
+  out on your Mac.
 - **Your local network.** Spotifast looks for Spotify Connect speakers over
   mDNS and talks to the ones you choose.
 

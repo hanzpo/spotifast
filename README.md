@@ -47,7 +47,10 @@ request. To look at the interface without a Spotify account, run
 
 Spotifast uses [librespot](https://github.com/librespot-org/librespot),
 [egui](https://github.com/emilk/egui), the [Inter](https://rsms.me/inter/)
-typeface (OFL), and [Lucide](https://lucide.dev) icons (ISC).
+typeface (OFL), and [Lucide](https://lucide.dev) icons (ISC). Karaoke on
+macOS uses UVR's MDX-Net "Voc FT" vocal model by Kimberley Jensen, in the
+Core ML conversion by [gyoom](https://huggingface.co/gyoom/UVR-MDX-CoreML)
+(MIT), downloaded the first time karaoke is turned on.
 
 Spotifast is an independent project and is not affiliated with Spotify.
 Spotify is a trademark of Spotify AB.
