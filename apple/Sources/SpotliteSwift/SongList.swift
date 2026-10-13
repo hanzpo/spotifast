@@ -339,6 +339,8 @@ struct SongRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(isLiked && !selected ? AnyShapeStyle(.tint) : secondary)
             .opacity(!track.isEpisode && (hovered || isLiked) ? 1 : 0)
+            // Episodes have no heart: an invisible one mustn't take clicks.
+            .allowsHitTesting(!track.isEpisode)
             .help(isLiked ? "Remove from Liked Songs" : "Add to Liked Songs")
             .frame(width: Widths.heart)
             // Music's More button, on the row under the pointer.
@@ -368,7 +370,8 @@ struct SongRow: View {
                     : striped ? AnyShapeStyle(.quinary) : AnyShapeStyle(.clear))
         }
         .onHover { hovered = $0 }
-        // The list's own answer replaces the click's guess once it comes.
+        // The list's own answer replaces the click's guess once it comes;
+        // a like that fails changes the library, which reloads the list.
         .onChange(of: track.saved) { likedNow = nil }
     }
 
