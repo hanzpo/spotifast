@@ -330,6 +330,25 @@ impl App {
             return;
         };
         for request in server.take_requests() {
+            // Spotify's own GraphQL service, as the desktop app asks it,
+            // answered when Spotify answers.
+            if request.method == "pathfinder.query" {
+                let operation = request.params["operation"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let variables = request.params["variables"].clone();
+                self.backend.send(crate::backend::Command::Pathfinder {
+                    operation,
+                    variables: if variables.is_null() {
+                        json!({})
+                    } else {
+                        variables
+                    },
+                    reply: Box::new(server.later(&request)),
+                });
+                continue;
+            }
             let mut result = self.answer(&request);
             if let Ok(value) = &mut result {
                 self.mark_saved(value);

@@ -667,6 +667,13 @@ pub enum Command {
     Lyrics(Box<LyricsRequest>),
     /// The account's playlist tree, folders and all, from the session.
     Rootlist,
+    /// One of the desktop app's pathfinder queries, answered as Spotify
+    /// gives it.
+    Pathfinder {
+        operation: String,
+        variables: serde_json::Value,
+        reply: Box<dyn FnOnce(Result<serde_json::Value, String>) + Send>,
+    },
     /// Internal: a rootlist read completed for this signed-in session.
     RootlistFinished {
         generation: u64,
@@ -1830,6 +1837,21 @@ impl Worker {
                 Command::ActivateReceiver(receiver) => self.activate_receiver(*receiver),
                 Command::Lyrics(request) => self.fetch_lyrics(*request),
                 Command::Rootlist => self.fetch_rootlist(),
+                Command::Pathfinder {
+                    operation,
+                    variables,
+                    reply,
+                } => {
+                    let Some(engine) = self.engine.clone() else {
+                        reply(Err("Spotify isn't connected yet".into()));
+                        continue;
+                    };
+                    tokio::spawn(async move {
+                        let result =
+                            crate::pathfinder::query(engine.session(), &operation, variables).await;
+                        reply(result.map_err(|error| format!("{error:#}")));
+                    });
+                }
                 Command::RootlistFinished { generation, result } => {
                     self.on_rootlist_finished(generation, result);
                 }

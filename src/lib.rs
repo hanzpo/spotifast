@@ -37,6 +37,7 @@ pub mod mac_touchbar_crash_guard;
 pub mod model;
 pub mod notch;
 pub mod opener;
+pub mod pathfinder;
 pub mod paths;
 pub mod player;
 pub mod playlist_cover;

@@ -5621,6 +5621,7 @@ dependencies = [
  "anyhow",
  "apple-native-keyring-store",
  "base64",
+ "bytes",
  "clap",
  "ctr",
  "directories",

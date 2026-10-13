@@ -148,25 +148,45 @@ impl Server {
         self.send(Some(request.client), &line);
     }
 
+    /// Answers a request later, from any thread: for an answer that needs
+    /// the network.
+    pub fn later(&self, request: &Request) -> impl FnOnce(Result<Value, String>) + Send + 'static {
+        let shared = Arc::clone(&self.shared);
+        let id = request.id.clone();
+        let client = request.client;
+        move |result| {
+            let line = match result {
+                Ok(result) => serde_json::json!({ "id": id, "result": result }),
+                Err(error) => serde_json::json!({ "id": id, "error": error }),
+            };
+            send(&shared, Some(client), &line);
+        }
+    }
+
     /// Pushes an event to every connection.
     pub fn broadcast(&self, event: &str, data: Value) {
         self.send(None, &serde_json::json!({ "event": event, "data": data }));
     }
 
     fn send(&self, to: Option<u64>, line: &Value) {
-        let Ok(text) = serde_json::to_string(line) else {
-            return;
-        };
-        if let Some(mut shared) = self.lock() {
-            // A closed connection's writer is gone; forget it.
-            shared.clients.retain(|(client, sender)| {
-                to.is_some_and(|to| to != *client) || sender.send(text.clone()).is_ok()
-            });
-        }
+        send(&self.shared, to, line);
     }
 
     fn lock(&self) -> Option<std::sync::MutexGuard<'_, Shared>> {
         self.shared.lock().ok()
+    }
+}
+
+/// Writes a line to one connection, or to every one.
+fn send(shared: &Mutex<Shared>, to: Option<u64>, line: &Value) {
+    let Ok(text) = serde_json::to_string(line) else {
+        return;
+    };
+    if let Ok(mut shared) = shared.lock() {
+        // A closed connection's writer is gone; forget it.
+        shared.clients.retain(|(client, sender)| {
+            to.is_some_and(|to| to != *client) || sender.send(text.clone()).is_ok()
+        });
     }
 }
 
