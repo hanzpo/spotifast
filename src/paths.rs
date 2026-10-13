@@ -95,6 +95,11 @@ impl AppDirs {
         self.cache.join("audio")
     }
 
+    /// Karaoke's vocal model, fetched the first time it is turned on.
+    pub fn karaoke_dir(&self) -> PathBuf {
+        self.cache.join("karaoke")
+    }
+
     pub fn art_cache_dir(&self) -> PathBuf {
         self.cache.join("art")
     }

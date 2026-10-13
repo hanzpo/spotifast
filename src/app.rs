@@ -578,6 +578,10 @@ pub struct App {
     eq: crate::eq::SharedEq,
     /// Karaoke, shared with the player.
     pub(crate) karaoke: crate::karaoke::SharedKaraoke,
+    /// The vocal model is being fetched.
+    pub(crate) karaoke_fetching: bool,
+    /// Why karaoke could not start, until it is tried again.
+    pub(crate) karaoke_error: Option<String>,
 }
 
 /// How many plays the Home shelf asks for: it shows sixteen cards.
@@ -686,6 +690,11 @@ impl App {
             *shared = eq_settings(&settings);
         }
         let karaoke = crate::karaoke::Karaoke::shared();
+        karaoke.set_vocal_level(settings.karaoke_vocal_level);
+        #[cfg(target_os = "macos")]
+        if crate::karaoke::model::installed(&dirs.karaoke_dir()) {
+            karaoke.set_loader(Some(karaoke_loader(&dirs)));
+        }
         let applied_proxy_preferences = settings.proxy_preferences();
         let applied_proxy = match settings.proxy_config() {
             Ok(proxy) => proxy,
@@ -962,6 +971,8 @@ impl App {
             collapsed_folders: session.collapsed_folders.clone(),
             eq,
             karaoke,
+            karaoke_fetching: false,
+            karaoke_error: None,
         };
         app.local.volume = app.settings.volume;
         // What was played here is on disk and needs nothing from the
@@ -1967,6 +1978,19 @@ impl App {
                         }
                     }
                 },
+                Event::KaraokeModel(result) => {
+                    self.karaoke_fetching = false;
+                    match result {
+                        #[cfg(target_os = "macos")]
+                        Ok(_) => self.karaoke.set_loader(Some(karaoke_loader(&self.dirs))),
+                        #[cfg(not(target_os = "macos"))]
+                        Ok(_) => {}
+                        Err(error) => {
+                            self.karaoke.set_enabled(false);
+                            self.karaoke_error = Some(error);
+                        }
+                    }
+                }
                 Event::Lyrics { uri, result } => {
                     if self.lyrics_uri.as_deref() == Some(uri.as_str()) {
                         self.lyrics = match result {
@@ -9282,6 +9306,20 @@ impl App {
                     self.push_eq();
                 }
             }
+            Action::SetKaraoke(on) => {
+                self.karaoke.set_enabled(on);
+                self.karaoke_error = None;
+                if on && !self.karaoke.has_model() && !self.karaoke_fetching {
+                    self.karaoke_fetching = true;
+                    self.backend.send(Command::KaraokeModel);
+                }
+            }
+            Action::SetVocalLevel(level) => {
+                self.settings.karaoke_vocal_level = level.clamp(0.0, 1.0);
+                self.karaoke
+                    .set_vocal_level(self.settings.karaoke_vocal_level);
+                self.settings_dirty = true;
+            }
             // The same request the window's own close button makes, so the
             // close-to-tray setting decides what follows.
             Action::CloseWindow => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
@@ -9986,6 +10024,13 @@ fn increase_playlist_total(playlist: &mut Playlist, added: u32) {
     } else {
         playlist.items_count = Some(TrackCount { total: added });
     }
+}
+
+/// Loads karaoke's vocal model from where it is fetched to.
+#[cfg(target_os = "macos")]
+fn karaoke_loader(dirs: &AppDirs) -> crate::karaoke::Loader {
+    let package = crate::karaoke::model::package(&dirs.karaoke_dir());
+    std::sync::Arc::new(move || crate::karaoke::coreml::load(&package))
 }
 
 pub fn engine_config(
@@ -19910,6 +19955,50 @@ mod tests {
         app.receive_playlist_cache_stored("alice", "large", 0, "current", true);
         assert_eq!(app.playlist_pages["large"].cache_saved_through, Some(550));
         assert_eq!(app.playlist_pages["large"].cache_saved_rows, 2);
+    }
+
+    #[test]
+    fn karaoke_fetches_its_model_once_and_keeps_its_level() {
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        let set = |app: &mut App, params: serde_json::Value| {
+            app.answer(&crate::server::Request {
+                client: 0,
+                id: serde_json::json!(1),
+                method: "karaoke.set".into(),
+                params,
+            })
+            .unwrap();
+            app.apply_actions(&ctx);
+        };
+        // A fetch already on its way, so the test downloads nothing.
+        app.karaoke.set_loader(None);
+        app.karaoke_fetching = true;
+        set(&mut app, serde_json::json!({"on": true, "level": 0.25}));
+        assert!(app.karaoke.enabled());
+        assert_eq!(app.settings.karaoke_vocal_level, 0.25);
+        let karaoke = app.api_player()["karaoke"].clone();
+        assert_eq!(karaoke["on"], true);
+        assert_eq!(karaoke["status"], "downloading");
+        // A failed fetch turns karaoke off and says why.
+        app.handle_backend_events(vec![crate::backend::Event::KaraokeModel(Err(
+            "offline".into()
+        ))]);
+        assert!(!app.karaoke.enabled());
+        assert!(!app.karaoke_fetching);
+        assert_eq!(app.api_player()["karaoke"]["status"], "failed");
+        // With the model on disk, turning it on fetches nothing.
+        app.karaoke.set_loader(Some(std::sync::Arc::new(|| {
+            Err(anyhow::anyhow!("not loaded in tests"))
+        })));
+        set(&mut app, serde_json::json!({"on": true}));
+        assert!(!app.karaoke_fetching);
+        assert_eq!(
+            app.api_player()["karaoke"]["error"],
+            serde_json::Value::Null
+        );
+        set(&mut app, serde_json::json!({"on": false}));
+        assert_eq!(app.api_player()["karaoke"]["status"], "off");
     }
 
     #[test]

@@ -236,6 +236,8 @@ pub struct Settings {
     pub balance: f32,
     /// Play both channels the same.
     pub mono: bool,
+    /// How much of the voice karaoke leaves, from 0 (none) to 1 (all).
+    pub karaoke_vocal_level: f32,
     /// Which proxy to use. Older files without this field stay on `system`.
     #[serde(default, skip_serializing_if = "proxy_mode_is_system")]
     pub proxy_mode: ProxyMode,
@@ -325,6 +327,7 @@ impl Default for Settings {
             eq_bands_db: [0.0; 10],
             balance: 0.0,
             mono: false,
+            karaoke_vocal_level: 0.0,
             proxy_mode: ProxyMode::System,
             proxy: String::new(),
             proxy_host: String::new(),

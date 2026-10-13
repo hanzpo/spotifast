@@ -776,6 +776,15 @@ impl App {
                 }
                 Ok(self.api_lyrics())
             }
+            "karaoke.set" => {
+                if let Some(on) = params.get("on").and_then(Value::as_bool) {
+                    self.actions.push(Action::SetKaraoke(on));
+                }
+                if let Some(level) = params.get("level").and_then(Value::as_f64) {
+                    self.actions.push(Action::SetVocalLevel(level as f32));
+                }
+                ok()
+            }
             "devices.list" => Ok(self.api_devices()),
             "devices.refresh" => {
                 self.actions.push(Action::RefreshDevices);
@@ -1242,12 +1251,13 @@ impl App {
     }
 
     /// The player as a client shows it.
-    fn api_player(&self) -> Value {
+    pub(super) fn api_player(&self) -> Value {
         let Some(now) = self.now_playing() else {
             return json!({
                 "has_song": false,
                 "shuffle": self.playing_context_shuffle(),
                 "volume": crate::app::volume_to_percent(self.local.volume),
+                "karaoke": self.api_karaoke(),
             });
         };
         let from = self.playing_from();
@@ -1276,6 +1286,29 @@ impl App {
             "context": self.playing_context_uri(),
             "playing_from": from.as_ref().map(|from| from.name.clone()),
             "playing_from_page": from.and_then(|from| from.page).map(|page| page.encode()),
+            "karaoke": self.api_karaoke(),
+        })
+    }
+
+    /// Karaoke as the player bar and lyrics show it. `status` is `off`,
+    /// `downloading` (the model, the first time), `preparing` (loading it),
+    /// `running`, or `failed`, with `error` saying why.
+    fn api_karaoke(&self) -> Value {
+        let status = if self.karaoke_fetching {
+            "downloading"
+        } else if self.karaoke_error.is_some() {
+            "failed"
+        } else if self.karaoke.enabled() {
+            self.karaoke.status().as_str()
+        } else {
+            "off"
+        };
+        json!({
+            "available": cfg!(target_os = "macos"),
+            "on": self.karaoke.enabled(),
+            "level": self.settings.karaoke_vocal_level,
+            "status": status,
+            "error": self.karaoke_error,
         })
     }
 

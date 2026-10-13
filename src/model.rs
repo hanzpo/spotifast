@@ -1241,6 +1241,10 @@ pub enum Action {
     SetEqPreamp(f32),
     /// One of Winamp's presets, by its place in the list.
     ApplyEqPreset(usize),
+    /// Take the voice out of local playback, or put it back.
+    SetKaraoke(bool),
+    /// How much of the voice karaoke leaves, from 0 to 1.
+    SetVocalLevel(f32),
     /// Close the window the way its close button does: into the tray when
     /// that is on, out of the app otherwise.
     CloseWindow,

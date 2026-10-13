@@ -683,6 +683,8 @@ pub enum Command {
     Lyrics(Box<LyricsRequest>),
     /// The account's playlist tree, folders and all, from the session.
     Rootlist,
+    /// Karaoke's vocal model, fetched if it is not on disk yet.
+    KaraokeModel,
     /// One of the desktop app's pathfinder queries, answered as Spotify
     /// gives it.
     Pathfinder {
@@ -770,6 +772,8 @@ pub struct LyricsRequest {
 }
 
 pub enum Event {
+    /// Karaoke's vocal model is on disk, or could not be fetched.
+    KaraokeModel(Result<std::path::PathBuf, String>),
     ProxyRestored {
         config: ProxyConfig,
         password: Option<crate::credentials::ProxyPassword>,
@@ -1854,6 +1858,7 @@ impl Worker {
                 Command::ActivateReceiver(receiver) => self.activate_receiver(*receiver),
                 Command::Lyrics(request) => self.fetch_lyrics(*request),
                 Command::Rootlist => self.fetch_rootlist(),
+                Command::KaraokeModel => self.fetch_karaoke_model(),
                 Command::Pathfinder {
                     operation,
                     variables,
@@ -3188,6 +3193,39 @@ impl Worker {
             result,
         });
         self.start_album_type_lookup();
+    }
+
+    fn fetch_karaoke_model(&self) {
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        #[cfg(target_os = "macos")]
+        {
+            let http = self.http.client();
+            let dir = self.dirs.karaoke_dir();
+            tokio::spawn(async move {
+                let result = match http {
+                    Ok(http) => match tokio::fs::create_dir_all(&dir).await {
+                        Ok(()) => crate::karaoke::model::fetch(&http, &dir)
+                            .await
+                            .map_err(|error| format!("{error:#}")),
+                        Err(error) => Err(error.to_string()),
+                    },
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = &result {
+                    log::error!("karaoke: the vocal model was not fetched: {error}");
+                }
+                let _ = events.send(Event::KaraokeModel(result));
+                waker.wake();
+            });
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = events.send(Event::KaraokeModel(Err(
+                "Karaoke needs a Mac with Apple silicon".into(),
+            )));
+            waker.wake();
+        }
     }
 
     fn fetch_lyrics(&self, request: LyricsRequest) {
