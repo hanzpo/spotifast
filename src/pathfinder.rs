@@ -921,6 +921,88 @@ fn artist(data: &Value) -> Option<Artist> {
     })
 }
 
+/// An artist with its most played songs, as Spotify's artist page heads
+/// itself. The page asks for both separately, so an answer is kept a few
+/// minutes.
+pub async fn artist_overview(session: &Session, id: &str) -> anyhow::Result<(Artist, Vec<Track>)> {
+    type Overviews = std::collections::HashMap<String, (std::time::Instant, (Artist, Vec<Track>))>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Overviews>> =
+        std::sync::LazyLock::new(Default::default);
+    const KEEP: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+    if let Ok(kept) = KEPT.lock()
+        && let Some((at, overview)) = kept.get(id)
+        && at.elapsed() < KEEP
+    {
+        return Ok(overview.clone());
+    }
+    let data = query(
+        session,
+        "queryArtistOverview",
+        json!({ "uri": format!("spotify:artist:{id}"), "locale": "", "includePrerelease": true }),
+    )
+    .await?;
+    let overview =
+        overview(&data["artistUnion"]).ok_or_else(|| anyhow!("Spotify has no artist {id}"))?;
+    if let Ok(mut kept) = KEPT.lock() {
+        kept.retain(|_, (at, _)| at.elapsed() < KEEP);
+        kept.insert(
+            id.to_string(),
+            (std::time::Instant::now(), overview.clone()),
+        );
+    }
+    Ok(overview)
+}
+
+fn overview(artist: &Value) -> Option<(Artist, Vec<Track>)> {
+    let mut found = self::artist(artist)?;
+    found.followers = artist["stats"]["followers"]
+        .as_u64()
+        .map(|total| crate::api::models::Followers { total });
+    // The top songs name their albums only by URI; the releases on the
+    // same page name most of them.
+    let mut names = std::collections::HashMap::new();
+    album_names(artist, &mut names);
+    let top = artist["discography"]["topTracks"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| track(&item["track"]))
+        .map(|mut song| {
+            if let Some(album) = song.album.as_mut().filter(|album| album.name.is_empty())
+                && let Some(name) = names.get(&album.uri)
+            {
+                album.name = name.clone();
+            }
+            song
+        })
+        .collect();
+    Some((found, top))
+}
+
+/// Every album anywhere in `value` that has a name, by URI.
+fn album_names(value: &Value, names: &mut std::collections::HashMap<String, String>) {
+    match value {
+        Value::Object(object) => {
+            if let (Some(uri), Some(name)) = (
+                object.get("uri").and_then(Value::as_str),
+                object.get("name").and_then(Value::as_str),
+            ) && uri.starts_with("spotify:album:")
+            {
+                names.insert(uri.to_string(), name.to_string());
+            }
+            for child in object.values() {
+                album_names(child, names);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                album_names(item, names);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The artists Spotify relates to one, as its artist page lists them.
 pub async fn related_artists(session: &Session, id: &str) -> anyhow::Result<Vec<Artist>> {
     let data = query(
@@ -1447,6 +1529,36 @@ mod tests {
         for asked in ["searchDesktop", "searchPlaylists", "queryArtistRelated"] {
             assert!(names.iter().any(|name| name == asked), "{asked} missing");
         }
+    }
+
+    #[test]
+    fn an_artist_overview_heads_the_page_with_its_top_songs() {
+        let artist = json!({
+            "uri": "spotify:artist:3nFkdlSjzX9mRTtwJOzDYB",
+            "profile": { "name": "JAY-Z" },
+            "visuals": { "avatarImage": { "sources": [{ "url": "https://i.scdn.co/image/j", "width": 640, "height": 640 }] } },
+            "stats": { "followers": 11661124 },
+            "discography": {
+                "albums": { "items": [{ "releases": { "items": [
+                    { "uri": "spotify:album:2CUT0104gySOIvqwtXeFsX", "name": "The Blueprint 3" }
+                ] } }] },
+                "topTracks": { "items": [{ "track": {
+                "uri": "spotify:track:2igwFfvr1OAGX9SKDCPBwO",
+                "name": "Empire State Of Mind",
+                "duration": { "totalMilliseconds": 276920 },
+                "artists": { "items": [{ "uri": "spotify:artist:3nFkdlSjzX9mRTtwJOzDYB", "profile": { "name": "JAY-Z" } }] },
+                "albumOfTrack": { "uri": "spotify:album:2CUT0104gySOIvqwtXeFsX", "coverArt": { "sources": [] } }
+            } }] } }
+        });
+        let (found, top) = overview(&artist).unwrap();
+        assert_eq!(top[0].album.as_ref().unwrap().name, "The Blueprint 3");
+        assert_eq!(found.name, "JAY-Z");
+        assert_eq!(found.followers.unwrap().total, 11661124);
+        assert_eq!(found.images.len(), 1);
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0].name, "Empire State Of Mind");
+        assert_eq!(top[0].album.as_ref().unwrap().id, "2CUT0104gySOIvqwtXeFsX");
+        assert!(overview(&json!({})).is_none());
     }
 
     #[test]

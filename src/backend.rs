@@ -4060,6 +4060,18 @@ async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiR
             result: Ok(ask(crate::pathfinder::home(session)).await?),
             generation: *generation,
         },
+        ApiRequest::Artist { id } => ApiResponse::Artist {
+            result: Ok(ask(crate::pathfinder::artist_overview(session, id))
+                .await?
+                .0),
+            id: id.clone(),
+        },
+        ApiRequest::ArtistTopTracks { id } => ApiResponse::ArtistTopTracks {
+            result: Ok(ask(crate::pathfinder::artist_overview(session, id))
+                .await?
+                .1),
+            id: id.clone(),
+        },
         ApiRequest::RelatedArtists { id } => ApiResponse::RelatedArtists {
             id: id.clone(),
             result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),
