@@ -1074,6 +1074,12 @@ pub enum Action {
         from: usize,
         to: usize,
     },
+    /// Remove one row of "Playing next". Like a move, only while the local
+    /// player is the active target: the queue is rewritten by clearing it
+    /// and adding the rest back.
+    RemoveFromQueue {
+        index: usize,
+    },
     /// Insert dragged songs into "Playing next" at a position, instead of
     /// always appending like `QueueMany`. Falls back to appending when the
     /// local player is not the active target.

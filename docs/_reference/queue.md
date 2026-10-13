@@ -139,3 +139,7 @@ counts once, and the notification reports only the rows actually added.
     target: it plays from the current context, not from a list Spotifast
     can rewrite. While *Playing next* is empty, drop the song on the player
     bar's Queue button instead.
+
+12. **A song in *Playing next* can be removed on its own,** from its row's
+    menu or with Delete, by the same clear-and-re-add, so also only while
+    this computer is the active player. Other copies of the song stay.

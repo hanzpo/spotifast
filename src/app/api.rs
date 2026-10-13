@@ -729,6 +729,17 @@ impl App {
                 self.actions.push(Action::MoveInQueue { from, to });
                 ok()
             }
+            "queue.remove" => {
+                if !self.queue_locally_reorderable() {
+                    return Err(
+                        "Songs can be removed from the queue only while playing on this Mac."
+                            .into(),
+                    );
+                }
+                let index = param_u64(params, "index")? as usize;
+                self.actions.push(Action::RemoveFromQueue { index });
+                ok()
+            }
             "queue.clear" => {
                 if !self.can_clear_queue() {
                     return Err("The queue can be cleared only while playing on this Mac.".into());

@@ -8452,6 +8452,21 @@ impl App {
                 self.session_dirty = true;
                 self.resync_local_queue();
             }
+            Action::RemoveFromQueue { index } => {
+                if !self.queue_locally_reorderable() || index >= self.queued_rows_len() {
+                    return;
+                }
+                // The rows on show follow the manual queue's order, so the
+                // row and the manual entry share the index.
+                self.show_manual_queue_order(self.queued_rows_len());
+                if let Loadable::Loaded(queue) = &mut self.queue
+                    && index < queue.queue.len()
+                {
+                    queue.queue.remove(index);
+                }
+                self.remove_manual_queue_row(index);
+                self.resync_local_queue();
+            }
             Action::InsertInQueue { items, position } => {
                 if !self.queue_locally_reorderable() {
                     let songs = items
@@ -13870,6 +13885,31 @@ mod tests {
     /// quick succession used to share one budget, so an answer from the
     /// middle of the engine's clear-and-re-add was accepted after a later
     /// move and dropped the queued songs from Playing next (#598).
+    #[test]
+    fn removing_a_row_leaves_the_rest_of_playing_next_and_the_context() {
+        let mut app = app_with_local_manual_queue();
+        let ctx = egui::Context::default();
+        app.apply(Action::RemoveFromQueue { index: 1 }, &ctx);
+        assert_eq!(app.manual_queue, ["spotify:track:a", "spotify:track:c"]);
+        assert_eq!(
+            queue_uris(&app).1,
+            ["spotify:track:a", "spotify:track:c", "spotify:track:ctx"]
+        );
+        assert_eq!(app.queued_rows_len(), 2);
+        // The context's rows aren't the app's to remove.
+        app.apply(Action::RemoveFromQueue { index: 2 }, &ctx);
+        assert_eq!(app.queued_rows_len(), 2);
+    }
+
+    #[test]
+    fn removing_a_row_needs_this_mac_to_be_playing() {
+        let mut app = app_with_local_manual_queue();
+        app.local.playback = Playback::Stopped;
+        let ctx = egui::Context::default();
+        app.apply(Action::RemoveFromQueue { index: 0 }, &ctx);
+        assert_eq!(app.manual_queue.len(), 3);
+    }
+
     #[test]
     fn every_local_move_restarts_the_stale_queue_allowance() {
         let mut app = app_with_local_manual_queue();
