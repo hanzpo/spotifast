@@ -4,6 +4,8 @@ import SwiftUI
 /// the song in the middle, and the panels, devices and volume at its end.
 struct PlayerBar: View {
     @Environment(AppModel.self) private var model
+    /// Each button at the bar's end is this wide, so they sit evenly.
+    static let icon: CGFloat = 20
 
     var body: some View {
         @Bindable var model = model
@@ -45,20 +47,33 @@ struct PlayerBar: View {
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: 12) {
+                if player.hasSong, player.isEpisode != true {
+                    Button {
+                        if let uri = player.uri { model.toggleSaved(uri) }
+                    } label: {
+                        Image(systemName: player.saved == true ? "heart.fill" : "heart")
+                            .foregroundStyle(player.saved == true ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                            .frame(width: Self.icon)
+                    }
+                    .help(player.saved == true ? "Remove from Liked Songs" : "Save to Liked Songs")
+                }
                 KaraokeButton()
                 Button { model.togglePanel(.lyrics) } label: {
                     Image(systemName: "quote.bubble")
                         .foregroundStyle(model.panel == .lyrics ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .frame(width: Self.icon)
                 }
                 .help("Lyrics")
                 Button { model.togglePanel(.queue) } label: {
                     Image(systemName: "list.bullet")
                         .foregroundStyle(model.panel == .queue ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .frame(width: Self.icon)
                 }
                 .help("Queue")
                 Button { model.showDevices.toggle() } label: {
                     Image(systemName: "airplayaudio")
                         .foregroundStyle(player.local == false ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .frame(width: Self.icon)
                 }
                 .help(player.device.map { "Playing on \($0)" } ?? "Play On")
                 .popover(isPresented: $model.showDevices, arrowEdge: .top) { DevicesView() }
@@ -96,7 +111,7 @@ struct KaraokeButton: View {
                             .foregroundStyle(karaoke.on ? AnyShapeStyle(.tint) : AnyShapeStyle(glass ? .primary : .secondary))
                     }
                 }
-                .frame(width: glass ? 30 : 16, height: glass ? 30 : nil)
+                .frame(width: glass ? 30 : PlayerBar.icon, height: glass ? 30 : nil)
             }
             .help(Self.help(karaoke))
             .disabled(!player.hasSong && !karaoke.on)
@@ -234,16 +249,6 @@ struct NowPlaying: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                if player.isEpisode != true {
-                    Button {
-                        if let uri = player.uri { model.toggleSaved(uri) }
-                    } label: {
-                        Image(systemName: player.saved == true ? "heart.fill" : "heart")
-                            .foregroundStyle(player.saved == true ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                    }
-                    .buttonStyle(.plain)
-                    .help(player.saved == true ? "Remove from Liked Songs" : "Save to Liked Songs")
-                }
             } else {
                 Text("Nothing playing")
                     .foregroundStyle(.secondary)
