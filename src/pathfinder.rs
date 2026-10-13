@@ -16,6 +16,8 @@ use http::{Method, Request, header};
 use librespot_core::Session;
 use serde_json::{Value, json};
 
+use crate::api::models::{Artist, Image};
+
 const ENDPOINT: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
 
 /// The desktop app's queries, by name, with their hashes.
@@ -665,9 +667,81 @@ pub async fn query(session: &Session, operation: &str, variables: Value) -> anyh
     Ok(answer["data"].take())
 }
 
+/// The pictures in a pathfinder image source list, as the Web API gives
+/// them.
+fn images(sources: &Value) -> Vec<Image> {
+    sources
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|source| {
+            Some(Image {
+                url: source["url"].as_str()?.to_string(),
+                width: source["width"].as_u64().map(|width| width as u32),
+                height: source["height"].as_u64().map(|height| height as u32),
+            })
+        })
+        .collect()
+}
+
+/// An artist as pathfinder names one, with its picture.
+fn artist(data: &Value) -> Option<Artist> {
+    let uri = data["uri"].as_str()?;
+    Some(Artist {
+        id: uri.strip_prefix("spotify:artist:")?.to_string(),
+        uri: uri.to_string(),
+        name: data["profile"]["name"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        images: images(&data["visuals"]["avatarImage"]["sources"]),
+        ..Default::default()
+    })
+}
+
+/// The artists Spotify relates to one, as its artist page lists them.
+pub async fn related_artists(session: &Session, id: &str) -> anyhow::Result<Vec<Artist>> {
+    let data = query(
+        session,
+        "queryArtistRelated",
+        json!({ "uri": format!("spotify:artist:{id}") }),
+    )
+    .await?;
+    Ok(related(&data))
+}
+
+fn related(data: &Value) -> Vec<Artist> {
+    data["artistUnion"]["relatedContent"]["relatedArtists"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(artist)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn related_artists_keep_their_names_and_pictures() {
+        let data = json!({ "artistUnion": { "relatedContent": { "relatedArtists": { "items": [
+            {
+                "id": "0XOT5JvyItELtax6yuzvWl",
+                "uri": "spotify:artist:0XOT5JvyItELtax6yuzvWl",
+                "profile": { "name": "kuala" },
+                "visuals": { "avatarImage": { "sources": [
+                    { "url": "https://i.scdn.co/image/a", "width": 640, "height": 640 }
+                ] } }
+            },
+            { "profile": { "name": "no uri" } }
+        ] } } } });
+        let artists = related(&data);
+        assert_eq!(artists.len(), 1);
+        assert_eq!(artists[0].id, "0XOT5JvyItELtax6yuzvWl");
+        assert_eq!(artists[0].name, "kuala");
+        assert_eq!(artists[0].images[0].width, Some(640));
+    }
 
     #[test]
     fn every_query_has_one_full_hash() {

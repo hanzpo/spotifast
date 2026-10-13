@@ -3563,6 +3563,32 @@ async fn handle(
             Err(_) => log::debug!("session related artists for {id} timed out"),
         }
     }
+    // An artist's similar artists come from Spotify's own GraphQL service,
+    // as its artist page has them: the Web API serves them only from the
+    // shared app.
+    if let ApiRequest::RelatedArtists { id } = &request
+        && let Some(engine) = engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    {
+        match tokio::time::timeout(
+            SESSION_READ_TIMEOUT,
+            crate::pathfinder::related_artists(engine.session(), id),
+        )
+        .await
+        {
+            Ok(Ok(artists)) => {
+                return (
+                    ApiResponse::RelatedArtists {
+                        id: id.clone(),
+                        result: Ok(artists),
+                    },
+                    None,
+                );
+            }
+            Ok(Err(error)) => log::debug!("pathfinder related artists for {id} failed: {error:#}"),
+            Err(_) => log::debug!("pathfinder related artists for {id} timed out"),
+        }
+    }
     // An artist's top songs come over the session where it can: the Web
     // API serves them only from the shared app, whose rate limit can hold
     // them back for minutes.
