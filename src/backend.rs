@@ -3563,31 +3563,13 @@ async fn handle(
             Err(_) => log::debug!("session related artists for {id} timed out"),
         }
     }
-    // An artist's similar artists come from Spotify's own GraphQL service,
-    // as its artist page has them: the Web API serves them only from the
-    // shared app.
-    if let ApiRequest::RelatedArtists { id } = &request
-        && let Some(engine) = engine
-            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+    // What Spotify's own GraphQL service answers, as its desktop app asks
+    // it, comes from there: the Web API serves it only from the shared app.
+    if let Some(engine) =
+        engine.filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        && let Some(response) = pathfinder_answer(engine, &request).await
     {
-        match tokio::time::timeout(
-            SESSION_READ_TIMEOUT,
-            crate::pathfinder::related_artists(engine.session(), id),
-        )
-        .await
-        {
-            Ok(Ok(artists)) => {
-                return (
-                    ApiResponse::RelatedArtists {
-                        id: id.clone(),
-                        result: Ok(artists),
-                    },
-                    None,
-                );
-            }
-            Ok(Err(error)) => log::debug!("pathfinder related artists for {id} failed: {error:#}"),
-            Err(_) => log::debug!("pathfinder related artists for {id} timed out"),
-        }
+        return (response, None);
     }
     // An artist's top songs come over the session where it can: the Web
     // API serves them only from the shared app, whose rate limit can hold
@@ -4030,6 +4012,55 @@ async fn handle(
     };
     observe_playlists(api, &response);
     (response, expired.get())
+}
+
+/// What a pathfinder read gave, or none when it failed or took too long.
+async fn ask<T>(read: impl std::future::Future<Output = anyhow::Result<T>>) -> Option<T> {
+    match tokio::time::timeout(SESSION_READ_TIMEOUT, read).await {
+        Ok(Ok(answer)) => Some(answer),
+        Ok(Err(error)) => {
+            log::debug!("pathfinder couldn't answer: {error:#}");
+            None
+        }
+        Err(_) => {
+            log::debug!("pathfinder didn't answer in time");
+            None
+        }
+    }
+}
+
+/// The answer Spotify's own GraphQL service gives a request the Web API
+/// serves only from the shared app, or none when the service has no such
+/// query or doesn't answer in time, for the Web API to answer instead.
+async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiResponse> {
+    let session = engine.session();
+    Some(match request {
+        ApiRequest::RelatedArtists { id } => ApiResponse::RelatedArtists {
+            id: id.clone(),
+            result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),
+        },
+        ApiRequest::Search { query, serial } | ApiRequest::SearchCatalogue { query, serial } => {
+            let playlists = matches!(request, ApiRequest::Search { .. });
+            ApiResponse::Search {
+                result: Ok(ask(crate::pathfinder::search(session, query, playlists)).await?),
+                query: query.clone(),
+                serial: *serial,
+            }
+        }
+        ApiRequest::SearchPlaylists { query, serial } => ApiResponse::SearchPlaylists {
+            result: Ok(ask(crate::pathfinder::search_playlists(session, query)).await?),
+            query: query.clone(),
+            serial: *serial,
+        },
+        ApiRequest::Discover { term, generation } => ApiResponse::Discover {
+            result: Ok(ask(crate::pathfinder::search_playlists(session, term))
+                .await?
+                .items),
+            term: term.clone(),
+            generation: *generation,
+        },
+        _ => return None,
+    })
 }
 
 /// How many of the account's playlists a page of its list holds, as the

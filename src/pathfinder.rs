@@ -16,7 +16,9 @@ use http::{Method, Request, header};
 use librespot_core::Session;
 use serde_json::{Value, json};
 
-use crate::api::models::{Artist, Image};
+use crate::api::models::{
+    Album, Artist, ArtistRef, Episode, Image, Owner, Page, Playlist, SearchResults, Show, Track,
+};
 
 const ENDPOINT: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
 
@@ -719,9 +721,281 @@ fn related(data: &Value) -> Vec<Artist> {
         .collect()
 }
 
+/// How many of each kind a search finds at once, as the Web API's
+/// personal app is asked for.
+const SEARCH_LIMIT: u32 = 20;
+
+/// The variables both of the desktop app's searches take.
+fn search_variables(term: &str) -> Value {
+    json!({
+        "searchTerm": term,
+        "offset": 0,
+        "limit": SEARCH_LIMIT,
+        "numberOfTopResults": 5,
+        "includeAudiobooks": false,
+        "includePreReleases": false,
+        "includeLocalConcertsField": false,
+        "includeArtistHasConcertsField": false,
+        "includeAuthors": false,
+    })
+}
+
+/// Searches everything the app shows, as the desktop app's search page
+/// does; the playlists are left out unless `playlists`.
+pub async fn search(
+    session: &Session,
+    term: &str,
+    playlists: bool,
+) -> anyhow::Result<SearchResults> {
+    let data = query(session, "searchDesktop", search_variables(term)).await?;
+    let mut results = search_results(&data["searchV2"]);
+    if !playlists {
+        results.playlists = None;
+    }
+    Ok(results)
+}
+
+/// Searches playlists alone, as the desktop app's Playlists filter does.
+pub async fn search_playlists(session: &Session, term: &str) -> anyhow::Result<Page<Playlist>> {
+    let data = query(session, "searchPlaylists", search_variables(term)).await?;
+    Ok(page(&data["searchV2"]["playlists"], playlist))
+}
+
+fn search_results(search: &Value) -> SearchResults {
+    SearchResults {
+        tracks: Some(page(&search["tracksV2"], |item| {
+            track(&item["item"]["data"])
+        })),
+        artists: Some(page(&search["artists"], |item| artist(&item["data"]))),
+        albums: Some(page(&search["albumsV2"], album)),
+        playlists: Some(page(&search["playlists"], playlist)),
+        shows: Some(page(&search["podcasts"], show)),
+        episodes: Some(page(&search["episodes"], episode)),
+    }
+}
+
+/// A pathfinder list as a first page of the Web API's, read by `read`;
+/// an item `read` can't make sense of is left out.
+fn page<T>(list: &Value, read: impl Fn(&Value) -> Option<T>) -> Page<T> {
+    let items: Vec<T> = list["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(read)
+        .collect();
+    let total = list["totalCount"]
+        .as_u64()
+        .map_or(items.len() as u32, |total| total as u32);
+    Page {
+        next: (total as usize > items.len()).then(|| "pathfinder".to_string()),
+        limit: SEARCH_LIMIT,
+        offset: 0,
+        total,
+        items,
+    }
+}
+
+/// The id at the end of a Spotify URI of the given kind.
+fn id_of(uri: &str, kind: &str) -> Option<String> {
+    uri.strip_prefix(&format!("spotify:{kind}:"))
+        .map(str::to_string)
+}
+
+fn artist_refs(artists: &Value) -> Vec<ArtistRef> {
+    artists["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|artist| {
+            let uri = artist["uri"].as_str().map(str::to_string);
+            ArtistRef {
+                id: uri.as_deref().and_then(|uri| id_of(uri, "artist")),
+                name: artist["profile"]["name"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                uri,
+            }
+        })
+        .collect()
+}
+
+fn explicit(data: &Value) -> bool {
+    data["contentRating"]["label"].as_str() == Some("EXPLICIT")
+}
+
+fn track(data: &Value) -> Option<Track> {
+    let uri = data["uri"].as_str()?;
+    let album = &data["albumOfTrack"];
+    Some(Track {
+        id: id_of(uri, "track"),
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        duration_ms: data["duration"]["totalMilliseconds"]
+            .as_u64()
+            .unwrap_or_default() as u32,
+        explicit: explicit(data),
+        artists: artist_refs(&data["artists"]),
+        album: album["uri"].as_str().map(|uri| Album {
+            id: id_of(uri, "album").unwrap_or_default(),
+            name: album["name"].as_str().unwrap_or_default().to_string(),
+            uri: uri.to_string(),
+            images: images(&album["coverArt"]["sources"]),
+            ..Default::default()
+        }),
+        is_playable: data["playability"]["playable"].as_bool(),
+        ..Default::default()
+    })
+}
+
+fn album(item: &Value) -> Option<Album> {
+    let data = &item["data"];
+    let uri = data["uri"].as_str()?;
+    Some(Album {
+        id: id_of(uri, "album")?,
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        album_type: data["type"].as_str().map(str::to_lowercase),
+        images: images(&data["coverArt"]["sources"]),
+        artists: artist_refs(&data["artists"]),
+        release_date: data["date"]["year"].as_u64().map(|year| year.to_string()),
+        ..Default::default()
+    })
+}
+
+fn playlist(item: &Value) -> Option<Playlist> {
+    let data = &item["data"];
+    let uri = data["uri"].as_str()?;
+    let owner = &data["ownerV2"]["data"];
+    Some(Playlist {
+        id: id_of(uri, "playlist")?,
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        description: data["description"]
+            .as_str()
+            .filter(|description| !description.is_empty())
+            .map(str::to_string),
+        images: data["images"]["items"]
+            .get(0)
+            .map(|image| images(&image["sources"]))
+            .unwrap_or_default(),
+        owner: Owner {
+            id: owner["username"].as_str().map(str::to_string),
+            display_name: owner["name"].as_str().map(str::to_string),
+            uri: owner["uri"].as_str().map(str::to_string),
+        },
+        ..Default::default()
+    })
+}
+
+fn podcast(data: &Value) -> Option<Show> {
+    let uri = data["uri"].as_str()?;
+    Some(Show {
+        id: id_of(uri, "show")?,
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        publisher: data["publisher"]["name"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        images: images(&data["coverArt"]["sources"]),
+        ..Default::default()
+    })
+}
+
+fn show(item: &Value) -> Option<Show> {
+    podcast(&item["data"])
+}
+
+fn episode(item: &Value) -> Option<Episode> {
+    let data = &item["data"];
+    let uri = data["uri"].as_str()?;
+    Some(Episode {
+        id: id_of(uri, "episode")?,
+        name: data["name"].as_str().unwrap_or_default().to_string(),
+        uri: uri.to_string(),
+        duration_ms: data["duration"]["totalMilliseconds"]
+            .as_u64()
+            .unwrap_or_default() as u32,
+        description: data["description"].as_str().unwrap_or_default().to_string(),
+        images: images(&data["coverArt"]["sources"]),
+        release_date: data["releaseDate"]["isoString"]
+            .as_str()
+            .and_then(|date| date.get(..10))
+            .map(str::to_string),
+        explicit: explicit(data),
+        show: podcast(&data["podcastV2"]["data"]),
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_search_reads_as_the_web_api_gives_one() {
+        let search = json!({
+            "tracksV2": { "totalCount": 706, "items": [{ "item": { "data": {
+                "uri": "spotify:track:3AJwUDP919kvQ9QcozQPxg",
+                "name": "Yellow",
+                "duration": { "totalMilliseconds": 266773 },
+                "contentRating": { "label": "EXPLICIT" },
+                "playability": { "playable": true },
+                "artists": { "items": [
+                    { "uri": "spotify:artist:4gzpq5DPGxSnKTe4SA8HAU", "profile": { "name": "Coldplay" } }
+                ] },
+                "albumOfTrack": {
+                    "uri": "spotify:album:6ZG5lRT77aJ3btmArcykra",
+                    "name": "Parachutes",
+                    "coverArt": { "sources": [{ "url": "https://i.scdn.co/image/p", "width": 300, "height": 300 }] }
+                }
+            } } }] },
+            "albumsV2": { "totalCount": 1, "items": [{ "data": {
+                "uri": "spotify:album:6DJHxnUw0stWUtjKUg9xpy",
+                "name": "JUST A DREAM",
+                "type": "SINGLE",
+                "date": { "year": 2026 },
+                "coverArt": { "sources": [] },
+                "artists": { "items": [] }
+            } }] },
+            "playlists": { "totalCount": 1, "items": [{ "data": {
+                "uri": "spotify:playlist:0vvXsWCC9xrXsKd4FyS8kM",
+                "name": "Lofi Girl",
+                "description": "",
+                "images": { "items": [{ "sources": [{ "url": "https://image-cdn-ak.spotifycdn.com/l" }] }] },
+                "ownerV2": { "data": { "name": "Lofi Girl", "username": "chilledcow", "uri": "spotify:user:chilledcow" } }
+            } }] },
+            "episodes": { "totalCount": 1, "items": [{ "data": {
+                "uri": "spotify:episode:2Kyrh8lhLVMOEF",
+                "name": "Bodak Yellow",
+                "duration": { "totalMilliseconds": 1000 },
+                "releaseDate": { "isoString": "2017-08-27T22:00:00Z" },
+                "podcastV2": { "data": { "uri": "spotify:show:75vNAxywlGskFF8kO", "name": "MTV VMAs", "publisher": { "name": "MTV" } } }
+            } }] }
+        });
+        let results = search_results(&search);
+        let tracks = results.tracks.unwrap();
+        assert_eq!(tracks.total, 706);
+        assert!(tracks.next.is_some());
+        let track = &tracks.items[0];
+        assert_eq!(track.id.as_deref(), Some("3AJwUDP919kvQ9QcozQPxg"));
+        assert_eq!(track.duration_ms, 266773);
+        assert!(track.explicit);
+        assert_eq!(track.artists[0].name, "Coldplay");
+        assert_eq!(track.album.as_ref().unwrap().name, "Parachutes");
+        let album = &results.albums.unwrap().items[0];
+        assert_eq!(album.album_type.as_deref(), Some("single"));
+        assert_eq!(album.release_date.as_deref(), Some("2026"));
+        let playlist = &results.playlists.unwrap().items[0];
+        assert_eq!(playlist.description, None);
+        assert_eq!(playlist.owner.id.as_deref(), Some("chilledcow"));
+        assert_eq!(playlist.images.len(), 1);
+        let episode = &results.episodes.unwrap().items[0];
+        assert_eq!(episode.release_date.as_deref(), Some("2017-08-27"));
+        assert_eq!(episode.show.as_ref().unwrap().publisher, "MTV");
+        assert!(results.artists.unwrap().items.is_empty());
+    }
 
     #[test]
     fn related_artists_keep_their_names_and_pictures() {
