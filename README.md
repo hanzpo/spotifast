@@ -1,58 +1,97 @@
-# Spotifast
+# SwiftSpot
 
-**Spotify, native and fast.** Spotifast is a Spotify client written in
-Rust with [egui](https://github.com/emilk/egui). It plays music through
-[librespot](https://github.com/librespot-org/librespot), typically uses
-100–250 MB of RAM, starts in well under a second, and has no browser engine.
-It runs on Linux, macOS, and Windows.
+**A native Spotify client for the Mac, made to feel like Music.**
+SwiftSpot is a SwiftUI app over a small Rust engine that plays through
+[librespot](https://github.com/librespot-org/librespot). There is no browser
+engine anywhere: the whole thing runs in about 140 MB.
 
-**Playback needs Spotify Premium.** Free accounts can browse and search, but
-cannot play music through Spotifast.
+**Playback needs Spotify Premium.**
 
-https://github.com/user-attachments/assets/a5f669ce-b3b7-4f8e-9933-976a78876c7e
+![SwiftSpot's Home](screenshots/home.png)
 
-![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
+## What it does
 
-**[spotifast.rocks](https://spotifast.rocks/)** has downloads and the full guide:
+- **Music's layout:** a sidebar library, Home, Search, artist, album,
+  playlist and podcast pages, and a Liquid Glass player bar.
+- **Karaoke:** the microphone takes the voice out of the song. A vocal
+  separation model runs on the Neural Engine, on your Mac, and a slider
+  sets how much of the voice stays.
+- **Lyrics:** time-synced, following the song, and a line seeks when
+  clicked. There's also a full-window player with the lyrics beside it.
+- **Your library:** playlists you can create, edit and reorder, including
+  removing just one copy of a duplicated song. Also Liked Songs, Recently
+  Added, Top Songs, albums, artists, podcasts and saved episodes.
+- **The queue:** Playing Next, which you can reorder and remove songs from,
+  and History.
+- **Everything else:** Spotify Connect devices, a mini player, a sleep
+  timer, a ten-band equalizer, and Music's keyboard shortcuts.
 
-- [Getting started](https://spotifast.rocks/getting-started/): sign-in, playback on this computer, themes, fonts, proxies
-- [Everyday use](https://spotifast.rocks/using-spotifast/): keyboard shortcuts, command-line control
-- [Settings and files](https://spotifast.rocks/settings-and-files/) and [Privacy](https://spotifast.rocks/privacy/)
-- [Make it even faster](https://spotifast.rocks/make-it-even-faster/): scrolling performance and loading delays
-- [How it connects](https://spotifast.rocks/how-it-connects/) and [What Spotify allows](https://spotifast.rocks/what-spotify-allows/)
-- [Will my account get banned?](https://spotifast.rocks/what-is-spotifast/#will-my-spotify-account-get-banned)
+![A playlist with the lyrics panel and karaoke on](screenshots/playlist-lyrics.png)
 
-**Want WhatsApp just as fast and native?** [ZapFast](https://zapfast.rocks)
-is Spotifast's sibling. Both are built on
-[fastframe](https://github.com/crmne/fastframe).
+![The full-window player, singing along](screenshots/now-playing.png)
+
+![An artist page](screenshots/artist.png)
+
+## How it works
+
+Two processes, one app:
+
+- **The engine** (`src/`) keeps the Spotify session, plays the audio, and
+  holds the library, the queue and the caches. It runs inside the app,
+  with no window, and quits with it.
+- **The app** (`apple/`) is SwiftUI. It drives the engine over a local
+  socket; [apple/README.md](apple/README.md) lists the API.
+
+Pages are read the way Spotify's own apps read them, from Spotify's
+GraphQL service, so they don't wait on the Web API's tight rate limits.
+Lyrics, artwork, pages and audio are cached on disk.
 
 ## Install
 
-- **macOS:** `brew install --cask crmne/tap/spotifast`, or
-  [download the Mac app](https://spotifast.rocks/download/#macos).
-- **Arch Linux:** `yay -S spotifast-bin`
-- **Windows, Flatpak, AppImage, Nix and other Linux:** see the
-  [Download page](https://spotifast.rocks/download/).
-- **From source:** see
-  [Build from source](https://spotifast.rocks/getting-started/#build-from-source).
+You need macOS 26 or later on Apple silicon, Swift 6.2 (Xcode 26), and
+Rust ([mise](https://mise.jdx.dev) installs the right version).
 
-## Contributing
+```sh
+git clone https://github.com/hanzpo/swiftspot
+cd swiftspot
+mise trust
+apple/install.sh
+```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull
-request. To look at the interface without a Spotify account, run
-`cargo run --features demo -- --demo`. Release packaging is described in
-[PACKAGING.md](PACKAGING.md).
+The script builds the engine and the app, signs them with your Apple
+Development certificate if you have one, installs `SwiftSpot.app` into
+`/Applications` and opens it. Sign in with Spotify in the browser it opens.
 
-## Acknowledgements
+### Your own Spotify app (optional)
 
-Spotifast uses [librespot](https://github.com/librespot-org/librespot),
-[egui](https://github.com/emilk/egui), the [Inter](https://rsms.me/inter/)
-typeface (OFL), and [Lucide](https://lucide.dev) icons (ISC). Karaoke on
-macOS uses UVR's MDX-Net "Voc FT" vocal model by Kimberley Jensen, in the
-Core ML conversion by [gyoom](https://huggingface.co/gyoom/UVR-MDX-CoreML)
-(MIT), downloaded the first time karaoke is turned on.
+Out of the box, SwiftSpot shares a public Web API app with other clients,
+and that app is often rate-limited. To use one of your own:
 
-Spotifast is an independent project and is not affiliated with Spotify.
-Spotify is a trademark of Spotify AB.
+1. Create an app at
+   [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard),
+   with the redirect URI `http://127.0.0.1:8989/login` and the Web API.
+2. Put its client ID in
+   `~/Library/Application Support/me.paolino.spotifast/settings.json` as
+   `"web_client_id": "…"`, then restart SwiftSpot.
+
+## Karaoke
+
+The first time you turn karaoke on, SwiftSpot downloads its vocal model
+(33 MB) from a fixed revision on Hugging Face and checks it against
+digests built into the app. The model is UVR's MDX-Net "Voc FT" by
+Kimberley Jensen, in the Core ML conversion by
+[gyoom](https://huggingface.co/gyoom/UVR-MDX-CoreML) (MIT). It holds the
+music back by about a second so it can hear a little ahead; the lyrics and
+the progress bar account for that.
+
+## Credits
+
+SwiftSpot is a fork of [Spotifast](https://github.com/crmne/spotifast) by
+Carmine Paolino, whose Rust client is the engine here, and it keeps
+Spotifast's MIT license. It plays through
+[librespot](https://github.com/librespot-org/librespot).
+
+SwiftSpot is an independent project and is not affiliated with Spotify or
+Apple. Spotify is a trademark of Spotify AB.
 
 Licensed under the [MIT License](LICENSE).
