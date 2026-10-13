@@ -2082,6 +2082,13 @@ impl App {
             LocalPlayback::Ready { device_id } => {
                 self.local_device_id = Some(device_id.clone());
                 self.local_ready = true;
+                // Spotify's own Home is read over the streaming session,
+                // which a Home load at start-up comes before.
+                if self.home.requested && self.home.spotify.get().is_none() {
+                    self.backend.api(ApiRequest::SpotifyHome {
+                        generation: self.home.generation,
+                    });
+                }
                 if let Some(request) = self.queued_play.take() {
                     self.play_request(request, false);
                 }
@@ -3632,8 +3639,10 @@ impl App {
             full: false,
             generation,
         });
+        self.backend.api(ApiRequest::SpotifyHome { generation });
         self.home.discover_pending.clear();
-        for term in DISCOVER_TERMS.iter().filter(|_| !self.home.shared_fresh) {
+        let made_up = !self.home.shared_fresh && self.home.spotify.get().is_none();
+        for term in DISCOVER_TERMS.iter().filter(|_| made_up) {
             self.home
                 .discover_pending
                 .insert((*term).to_string(), Loadable::Loading);
@@ -4957,7 +4966,9 @@ impl App {
                         .filter_map(|track| track.id.clone())
                         .take(5)
                         .collect();
-                    let fresh = self.home.shared_fresh && self.home.recommendations.get().is_some();
+                    let fresh = (self.home.shared_fresh
+                        && self.home.recommendations.get().is_some())
+                        || self.home.spotify.get().is_some();
                     if !seeds.is_empty() && !fresh {
                         if self.home.recommendations.get().is_none() {
                             self.home.recommendations = Loadable::Loading;
@@ -4986,6 +4997,16 @@ impl App {
                 }
                 self.home_cache_dirty |= result.is_ok();
                 self.home.top_artists.refresh(result);
+            }
+            ApiResponse::SpotifyHome { generation, result } => {
+                if generation != self.home.generation {
+                    return;
+                }
+                if let Err(error) = &result {
+                    log::debug!("Spotify's Home: {error}");
+                }
+                self.home_cache_dirty |= result.is_ok();
+                self.home.spotify.refresh(result);
             }
             ApiResponse::Recommendations { generation, result } => {
                 if generation != self.home.generation {

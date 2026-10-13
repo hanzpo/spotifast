@@ -136,6 +136,10 @@ pub enum ApiRequest {
         seed_artists: Vec<String>,
         generation: u64,
     },
+    /// Spotify's own Home for the account, from pathfinder alone.
+    SpotifyHome {
+        generation: u64,
+    },
     Discover {
         term: String,
         generation: u64,
@@ -327,6 +331,7 @@ impl ApiRequest {
                 | Self::TopTracks { .. }
                 | Self::TopArtists { .. }
                 | Self::Recommendations { .. }
+                | Self::SpotifyHome { .. }
                 | Self::Discover { .. }
                 | Self::MyPlaylists { .. }
                 | Self::PlaylistSample { .. }
@@ -366,6 +371,10 @@ pub enum ApiResponse {
     Recommendations {
         generation: u64,
         result: ApiResult<Vec<Track>>,
+    },
+    SpotifyHome {
+        generation: u64,
+        result: ApiResult<Vec<crate::pathfinder::HomeSection>>,
     },
     Discover {
         term: String,
@@ -3414,6 +3423,7 @@ fn operation_for(api: &ApiGateway, request: &ApiRequest) -> Operation {
             Operation::PlaylistMutation(api.playlist_access(playlist_id))
         }
         ApiRequest::Recommendations { .. }
+        | ApiRequest::SpotifyHome { .. }
         | ApiRequest::ArtistTopTracks { .. }
         | ApiRequest::RelatedArtists { .. } => Operation::UnsupportedDevelopmentMode,
         ApiRequest::Artist { .. }
@@ -3656,6 +3666,12 @@ async fn handle(
         } => ApiResponse::Recommendations {
             generation,
             result: routed!(recommendations(&seed_tracks, &seed_artists, 20)),
+        },
+        // Spotify's Home has no Web API counterpart: without pathfinder the
+        // app's own shelves stand.
+        ApiRequest::SpotifyHome { generation } => ApiResponse::SpotifyHome {
+            generation,
+            result: Err(ApiError::Network("Spotify's Home isn't available".into())),
         },
         ApiRequest::Discover { term, generation } => {
             let result = routed!(search(&term, &["playlist"]))
@@ -4035,6 +4051,10 @@ async fn ask<T>(read: impl std::future::Future<Output = anyhow::Result<T>>) -> O
 async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiResponse> {
     let session = engine.session();
     Some(match request {
+        ApiRequest::SpotifyHome { generation } => ApiResponse::SpotifyHome {
+            result: Ok(ask(crate::pathfinder::home(session)).await?),
+            generation: *generation,
+        },
         ApiRequest::RelatedArtists { id } => ApiResponse::RelatedArtists {
             id: id.clone(),
             result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),

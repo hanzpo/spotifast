@@ -658,6 +658,10 @@ pub struct HomeData {
     pub top_songs_loading: bool,
     pub top_songs_complete: bool,
     pub recommendations: Loadable<Vec<Track>>,
+    /// Spotify's own Home sections, from its GraphQL service. While they
+    /// stand, the shelves the app made up in their place (Made for You
+    /// and the recommendations) aren't asked for.
+    pub spotify: Loadable<Vec<crate::pathfinder::HomeSection>>,
     pub discover: HashMap<String, Loadable<Vec<Playlist>>>,
     pub discover_pending: HashMap<String, Loadable<Vec<Playlist>>>,
     /// Saved podcasts with their newest episodes, in library order, for the

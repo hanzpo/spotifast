@@ -1721,7 +1721,35 @@ impl App {
     fn api_home(&self) -> Value {
         let mut shelves = Vec::new();
         let home = &self.home;
-        if self.settings.home.made_for_you.visible {
+        // Spotify's own Home, as its apps show it, leads; the shelves the
+        // app makes up in its place (Made for You, what was played
+        // recently, the recommendations) stand only without it.
+        let spotify = home.spotify.get();
+        for (index, section) in spotify.into_iter().flatten().enumerate() {
+            use crate::pathfinder::HomeItem;
+            let cards: Vec<Value> = section
+                .items
+                .iter()
+                .map(|item| match item {
+                    HomeItem::LikedSongs(images) => card(
+                        "liked",
+                        "liked",
+                        "spotify:collection:tracks",
+                        "Liked Songs",
+                        Some("Playlist".into()),
+                        pick_image(images, CARD),
+                    ),
+                    HomeItem::Playlist(playlist) => playlist_card(playlist),
+                    HomeItem::Album(album) => album_card(album),
+                    HomeItem::Artist(artist) => artist_card(artist),
+                    HomeItem::Show(show) => show_card(show),
+                })
+                .collect();
+            shelves.push(
+                json!({ "id": format!("spotify-{index}"), "title": section.title, "cards": cards }),
+            );
+        }
+        if spotify.is_none() && self.settings.home.made_for_you.visible {
             let mut seen = std::collections::HashSet::new();
             let cards: Vec<Value> = crate::model::DISCOVER_TERMS
                 .iter()
@@ -1735,7 +1763,7 @@ impl App {
                     .push(json!({ "id": "made-for-you", "title": "Made for You", "cards": cards }));
             }
         }
-        if let Some(recent) = home.recently_played.get() {
+        if let Some(recent) = home.recently_played.get().filter(|_| spotify.is_none()) {
             let mut seen = std::collections::HashSet::new();
             let cards: Vec<Value> = recent
                 .iter()
@@ -1778,7 +1806,8 @@ impl App {
                 "see_all": "top-songs",
             }));
         }
-        if self.settings.home.recommendations.visible
+        if spotify.is_none()
+            && self.settings.home.recommendations.visible
             && let Some(tracks) = home
                 .recommendations
                 .get()
@@ -1797,7 +1826,8 @@ impl App {
                 "cards": playlists.iter().take(20).map(playlist_card).collect::<Vec<_>>(),
             }));
         }
-        let loading = home.recently_played.is_loading()
+        let loading = home.spotify.is_loading()
+            || home.recently_played.is_loading()
             || home.top_artists.is_loading()
             || home.top_tracks.is_loading();
         json!({ "loading": loading, "shelves": shelves })

@@ -41,6 +41,9 @@ pub struct Cache {
     /// seconds.
     #[serde(default)]
     shared_fetched_at: Option<i64>,
+    /// Spotify's own Home sections.
+    #[serde(default)]
+    spotify: Option<Vec<crate::pathfinder::HomeSection>>,
 }
 
 impl Cache {
@@ -74,6 +77,7 @@ impl Cache {
             playlists: library.complete_playlists().cloned(),
             playlists_fetched_at: library.playlists_fetched_at,
             shared_fetched_at: home.shared_fetched_at,
+            spotify: home.spotify.get().cloned(),
         }
     }
 
@@ -100,6 +104,7 @@ impl Cache {
         fill(&mut home.top_artists, self.top_artists);
         fill(&mut home.top_tracks, self.top_tracks);
         fill(&mut home.recommendations, self.recommendations);
+        fill(&mut home.spotify, self.spotify);
         for (term, playlists) in self.discover {
             fill(home.discover.entry(term).or_default(), Some(playlists));
         }

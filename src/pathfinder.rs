@@ -721,6 +721,101 @@ fn related(data: &Value) -> Vec<Artist> {
         .collect()
 }
 
+/// One of the sections of Spotify's Home, as its apps show them.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HomeSection {
+    pub title: String,
+    pub items: Vec<HomeItem>,
+}
+
+/// One card of a Home section.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "item", rename_all = "snake_case")]
+pub enum HomeItem {
+    /// The account's Liked Songs, which Spotify's Home shows as a
+    /// playlist of its own making, with its picture.
+    LikedSongs(Vec<Image>),
+    Playlist(Playlist),
+    Album(Album),
+    Artist(Artist),
+    Show(Show),
+}
+
+/// How many cards Spotify's Home gives each of its sections.
+const HOME_SECTION_ITEMS: u32 = 20;
+
+/// Spotify's Home for the account, as its desktop app shows it: the
+/// sections made for it (its mixes, Discover Weekly, its radios, what it
+/// played recently) in Spotify's order.
+pub async fn home(session: &Session) -> anyhow::Result<Vec<HomeSection>> {
+    let time_zone = jiff::tz::TimeZone::system()
+        .iana_name()
+        .unwrap_or("UTC")
+        .to_string();
+    let data = query(
+        session,
+        "home",
+        json!({
+            "homeEndUserIntegration": "INTEGRATION_DESKTOP",
+            "timeZone": time_zone,
+            "sp_t": "",
+            "facet": "",
+            "sectionItemsLimit": HOME_SECTION_ITEMS,
+            "includeHomeChapterVideoCards": false,
+            "includeEpisodeContentRatingsV2": false,
+        }),
+    )
+    .await?;
+    let sections = home_sections(&data["home"]);
+    anyhow::ensure!(!sections.is_empty(), "Spotify's Home came back empty");
+    Ok(sections)
+}
+
+fn home_sections(home: &Value) -> Vec<HomeSection> {
+    home["sectionContainer"]["sections"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|section| {
+            // Sections without a title are the short clips at the top,
+            // which only Spotify's own player shows.
+            let title = section["data"]["title"]["transformedLabel"]
+                .as_str()
+                .filter(|title| !title.is_empty())?
+                .to_string();
+            let items: Vec<HomeItem> = section["sectionItems"]["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|item| home_item(&item["content"]))
+                .collect();
+            (!items.is_empty()).then_some(HomeSection { title, items })
+        })
+        .collect()
+}
+
+fn home_item(content: &Value) -> Option<HomeItem> {
+    match content["data"]["__typename"].as_str()? {
+        "Playlist" => playlist(content).map(|playlist| {
+            // Only the picture tells Liked Songs from the account's other
+            // generated playlists.
+            if playlist
+                .images
+                .iter()
+                .any(|image| image.url.contains("/liked-songs/"))
+            {
+                HomeItem::LikedSongs(playlist.images)
+            } else {
+                HomeItem::Playlist(playlist)
+            }
+        }),
+        "Album" => album(content).map(HomeItem::Album),
+        "Artist" => artist(&content["data"]).map(HomeItem::Artist),
+        "Podcast" => show(content).map(HomeItem::Show),
+        _ => None,
+    }
+}
+
 /// How many of each kind a search finds at once, as the Web API's
 /// personal app is asked for.
 const SEARCH_LIMIT: u32 = 20;
@@ -855,7 +950,11 @@ fn album(item: &Value) -> Option<Album> {
         id: id_of(uri, "album")?,
         name: data["name"].as_str().unwrap_or_default().to_string(),
         uri: uri.to_string(),
-        album_type: data["type"].as_str().map(str::to_lowercase),
+        // Search names the kind `type`, Home `albumType`.
+        album_type: data["type"]
+            .as_str()
+            .or_else(|| data["albumType"].as_str())
+            .map(str::to_lowercase),
         images: images(&data["coverArt"]["sources"]),
         artists: artist_refs(&data["artists"]),
         release_date: data["date"]["year"].as_u64().map(|year| year.to_string()),
@@ -995,6 +1094,65 @@ mod tests {
         assert_eq!(episode.release_date.as_deref(), Some("2017-08-27"));
         assert_eq!(episode.show.as_ref().unwrap().publisher, "MTV");
         assert!(results.artists.unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn home_keeps_its_titled_sections_and_the_cards_it_knows() {
+        let home = json!({ "sectionContainer": { "sections": { "items": [
+            { "data": { "__typename": "HomeShortsSectionData" }, "sectionItems": { "items": [
+                { "content": { "data": { "__typename": "Playlist", "uri": "spotify:playlist:short" } } }
+            ] } },
+            { "data": { "title": { "transformedLabel": "Made For hanz" } }, "sectionItems": { "items": [
+                { "content": { "data": {
+                    "__typename": "Playlist",
+                    "uri": "spotify:playlist:37i9dQZEVXcWeekly",
+                    "name": "Discover Weekly",
+                    "images": { "items": [] },
+                    "ownerV2": { "data": { "name": "Spotify", "username": "spotify" } }
+                } } },
+                { "content": { "__typename": "UnknownType", "data": null } },
+                { "content": { "data": {
+                    "__typename": "Playlist",
+                    "uri": "spotify:playlist:37i9dQZF1F5p3rmiWPIYgZ",
+                    "name": "Liked Songs",
+                    "images": { "items": [{ "sources": [{ "url": "https://misc.scdn.co/liked-songs/liked-songs-300.png" }] }] },
+                    "ownerV2": { "data": { "name": "hanz" } }
+                } } },
+                { "content": { "data": {
+                    "__typename": "Album",
+                    "uri": "spotify:album:6KBnYN8HyJik2PbGBmkIlP",
+                    "name": "by my side",
+                    "albumType": "SINGLE",
+                    "coverArt": { "sources": [] },
+                    "artists": { "items": [] }
+                } } },
+                { "content": { "data": {
+                    "__typename": "Podcast",
+                    "uri": "spotify:show:7iQXmUT7XGuZSzAMjoNWlX",
+                    "name": "The Diary Of A CEO",
+                    "publisher": { "name": "FlightStory" },
+                    "coverArt": { "sources": [] }
+                } } }
+            ] } },
+            { "data": { "title": { "transformedLabel": "Nothing known" } }, "sectionItems": { "items": [
+                { "content": { "data": { "__typename": "Audiobook", "uri": "spotify:show:book" } } }
+            ] } }
+        ] } } });
+        let sections = home_sections(&home);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].title, "Made For hanz");
+        let [
+            HomeItem::Playlist(playlist),
+            HomeItem::LikedSongs(_),
+            HomeItem::Album(album),
+            HomeItem::Show(show),
+        ] = sections[0].items.as_slice()
+        else {
+            panic!("unexpected cards: {:?}", sections[0].items);
+        };
+        assert_eq!(playlist.name, "Discover Weekly");
+        assert_eq!(album.album_type.as_deref(), Some("single"));
+        assert_eq!(show.publisher, "FlightStory");
     }
 
     #[test]
