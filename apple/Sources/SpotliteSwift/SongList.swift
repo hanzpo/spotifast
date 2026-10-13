@@ -24,6 +24,8 @@ struct SongSource {
     /// The list is sorted or filtered: it plays in the order shown, and
     /// its songs cannot move up or down the playlist.
     var reordered = false
+    /// How many rows the editable playlist holds in Spotify's copy.
+    var total: Int?
 }
 
 /// A column the list is sorted by.
@@ -438,9 +440,13 @@ struct SongMenu: View {
         }
         if let playlist = source.editablePlaylist {
             if let first, tracks.count == 1, !source.reordered {
+                // By the row's place in Spotify's copy, which counts rows
+                // the list leaves out.
+                let place = first.spotifyPosition ?? first.position
                 Button("Move Up") { model.move(first, in: playlist, by: -1) }
-                    .disabled(first.position == 0)
+                    .disabled(place == 0)
                 Button("Move Down") { model.move(first, in: playlist, by: 1) }
+                    .disabled(source.total.map { place + 1 >= $0 } ?? false)
             }
             Button("Remove from This Playlist") { model.remove(tracks, from: playlist) }
         }

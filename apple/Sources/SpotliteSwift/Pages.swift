@@ -287,7 +287,8 @@ struct SongsView: View {
                         source: SongSource(
                             context: page.context,
                             editablePlaylist: page.editable == true ? playlistID : nil,
-                            reordered: model.listSort != nil || !filter.isEmpty),
+                            reordered: model.listSort != nil || !filter.isEmpty,
+                            total: page.total),
                         more: page.more == true && filter.isEmpty && model.listSort == nil ? more : nil,
                         sort: method == "album.get" ? nil : Binding(
                             get: { model.listSort }, set: { model.listSort = $0 }))
