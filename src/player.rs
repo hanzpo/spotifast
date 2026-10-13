@@ -59,6 +59,8 @@ pub struct EngineConfig {
     pub buffer_ms: u32,
     /// The equalizer's settings, shared with the window that sets them.
     pub eq: crate::eq::SharedEq,
+    /// Karaoke, shared with the app that turns it on.
+    pub karaoke: crate::karaoke::SharedKaraoke,
     /// Proxy used by the Web API client. Librespot only uses the HTTP form.
     pub proxy: crate::settings::ProxyConfig,
 }
@@ -379,6 +381,7 @@ impl Engine {
             Arc::clone(&state),
             Arc::clone(&notify),
             Arc::clone(&audio),
+            Arc::clone(&config.karaoke),
         ));
 
         let connect_config = ConnectConfig {
@@ -586,6 +589,13 @@ impl Engine {
         );
         if interrupts_audio {
             self.audio.interrupt();
+        } else if matches!(
+            command,
+            PlayerCommand::Next | PlayerCommand::Previous | PlayerCommand::Load(_)
+        ) {
+            // Paused, nothing is queued to fade, but karaoke may hold a
+            // second of the old track.
+            self.audio.discard_processing();
         }
         let result = self.send_command(command);
         if interrupts_audio && result.is_err() {
@@ -694,6 +704,7 @@ fn sink_builder(
     let device = config.audio_device.clone();
     let buffer_ms = config.buffer_ms;
     let eq = Arc::clone(&config.eq);
+    let karaoke = Arc::clone(&config.karaoke);
     let report: ErrorHook = Arc::new(move |message: String| {
         let snapshot = {
             let mut current = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -707,7 +718,7 @@ fn sink_builder(
         return (
             Box::new(move || {
                 let sink = builder(device, AudioFormat::S16);
-                Box::new(EqSink::new(sink, audio, applied, true, eq)) as Box<dyn Sink>
+                Box::new(EqSink::new(sink, audio, applied, true, eq, karaoke)) as Box<dyn Sink>
             }),
             Box::new(NoOpVolume),
         );
@@ -725,7 +736,7 @@ fn sink_builder(
                 buffer_ms,
                 Arc::clone(&audio),
             ));
-            Box::new(EqSink::new(sink, audio, ceiling, false, eq)) as Box<dyn Sink>
+            Box::new(EqSink::new(sink, audio, ceiling, false, eq, karaoke)) as Box<dyn Sink>
         }),
         Box::new(NoOpVolume),
     )
@@ -757,14 +768,117 @@ impl Heard {
     }
 }
 
+/// Events after which nothing held back belongs to what is heard.
+fn moves_on(event: &PlayerEvent) -> bool {
+    matches!(
+        event,
+        PlayerEvent::Seeked { .. }
+            | PlayerEvent::Stopped { .. }
+            | PlayerEvent::Loading { .. }
+            | PlayerEvent::Paused { .. }
+            | PlayerEvent::TrackChanged { .. }
+            | PlayerEvent::Unavailable { .. }
+    )
+}
+
+/// Tells the listener's position rather than the decoder's, which is ahead
+/// by whatever the output stages hold.
+fn heard(event: PlayerEvent, lag: Duration) -> PlayerEvent {
+    let lag = lag.as_millis() as u32;
+    match event {
+        PlayerEvent::Playing {
+            play_request_id,
+            track_id,
+            position_ms,
+        } => PlayerEvent::Playing {
+            play_request_id,
+            track_id,
+            position_ms: position_ms.saturating_sub(lag),
+        },
+        PlayerEvent::Paused {
+            play_request_id,
+            track_id,
+            position_ms,
+        } => PlayerEvent::Paused {
+            play_request_id,
+            track_id,
+            position_ms: position_ms.saturating_sub(lag),
+        },
+        PlayerEvent::PositionChanged {
+            play_request_id,
+            track_id,
+            position_ms,
+        } => PlayerEvent::PositionChanged {
+            play_request_id,
+            track_id,
+            position_ms: position_ms.saturating_sub(lag),
+        },
+        PlayerEvent::PositionCorrection {
+            play_request_id,
+            track_id,
+            position_ms,
+        } => PlayerEvent::PositionCorrection {
+            play_request_id,
+            track_id,
+            position_ms: position_ms.saturating_sub(lag),
+        },
+        other => other,
+    }
+}
+
+/// Folds player events into the state the interface shows.
+///
+/// Karaoke holds about a second of sound, so the decoder runs that far
+/// ahead of the listener: positions are told less what is held, and the
+/// next track of a gapless change is only shown once it is heard. Events
+/// that follow it wait with it, until something moves playback on.
 async fn run_events(
     mut events: tokio::sync::mpsc::UnboundedReceiver<PlayerEvent>,
     state: Arc<Mutex<LocalState>>,
     notify: Notify,
     audio: Arc<AudioControl>,
+    karaoke: crate::karaoke::SharedKaraoke,
 ) {
     let mut play_request_id = None;
-    while let Some(event) = events.recv().await {
+    let mut waiting: Vec<PlayerEvent> = Vec::new();
+    let mut due: Option<tokio::time::Instant> = None;
+    let lag = |audio: &AudioControl| {
+        if audio.processing_reset_pending() {
+            Duration::ZERO
+        } else {
+            karaoke.lag()
+        }
+    };
+    let apply = |event: PlayerEvent, lag: Duration| {
+        let snapshot = {
+            let mut current = state.lock().unwrap_or_else(|p| p.into_inner());
+            if apply_event(&mut current, heard(event, lag)) {
+                Some(current.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(snapshot) = snapshot {
+            notify(EngineEvent::State(snapshot));
+        }
+    };
+    loop {
+        let received = match due {
+            Some(at) => tokio::select! {
+                event = events.recv() => event,
+                () = tokio::time::sleep_until(at) => {
+                    due = None;
+                    for event in waiting.drain(..) {
+                        apply(event, lag(&audio));
+                    }
+                    continue;
+                }
+            },
+            None => events.recv().await,
+        };
+        let Some(event) = received else {
+            break;
+        };
         if let PlayerEvent::PlayRequestIdChanged {
             play_request_id: next,
         } = &event
@@ -777,18 +891,37 @@ async fn run_events(
         {
             continue;
         }
-        audio.handle_player_event(&event);
-        let snapshot = {
-            let mut current = state.lock().unwrap_or_else(|p| p.into_inner());
-            if apply_event(&mut current, event) {
-                Some(current.clone())
-            } else {
-                None
+        match &event {
+            PlayerEvent::EndOfTrack { .. } => karaoke.track_ended(),
+            PlayerEvent::TrackChanged { .. } => {
+                let paused =
+                    state.lock().unwrap_or_else(|p| p.into_inner()).playback != Playback::Playing;
+                // A track loaded while paused, perhaps from another
+                // device: what karaoke held belongs to the one before.
+                if paused {
+                    audio.discard_processing();
+                }
             }
-        };
-        if let Some(snapshot) = snapshot {
-            notify(EngineEvent::State(snapshot));
+            _ => {}
         }
+        audio.handle_player_event(&event);
+        if due.is_some() {
+            if !moves_on(&event) {
+                waiting.push(event);
+                continue;
+            }
+            due = None;
+            for event in waiting.drain(..) {
+                apply(event, lag(&audio));
+            }
+        }
+        let lag = lag(&audio);
+        if matches!(event, PlayerEvent::TrackChanged { .. }) && lag > Duration::from_millis(50) {
+            waiting.push(event);
+            due = Some(tokio::time::Instant::now() + lag);
+            continue;
+        }
+        apply(event, lag);
     }
 }
 
@@ -1335,6 +1468,83 @@ mod tests {
         }
     }
 
+    /// Runs `run_events` with karaoke holding a second, while a track plays.
+    fn heard_events() -> (
+        tokio::sync::mpsc::UnboundedSender<PlayerEvent>,
+        Arc<Mutex<LocalState>>,
+    ) {
+        let karaoke = crate::karaoke::Karaoke::shared();
+        karaoke.hold(u64::from(librespot_playback::SAMPLE_RATE));
+        let state = Arc::new(Mutex::new(LocalState {
+            playback: Playback::Playing,
+            ..LocalState::default()
+        }));
+        let (events, inbox) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(run_events(
+            inbox,
+            Arc::clone(&state),
+            Arc::new(|_| {}),
+            AudioControl::new(crate::sink::DEFAULT_BUFFER_MS),
+            karaoke,
+        ));
+        (events, state)
+    }
+
+    fn position(position_ms: u32) -> PlayerEvent {
+        PlayerEvent::PositionChanged {
+            play_request_id: 0,
+            track_id: uri(),
+            position_ms,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn positions_are_where_the_listener_is_not_the_decoder() {
+        let (events, state) = heard_events();
+        events.send(position(5_000)).unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(state.lock().unwrap().position_ms, 4_000);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_gapless_change_is_shown_once_it_is_heard() {
+        let (events, state) = heard_events();
+        events
+            .send(PlayerEvent::TrackChanged {
+                audio_item: Box::new(interlude()),
+            })
+            .unwrap();
+        events.send(position(1_200)).unwrap();
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(state.lock().unwrap().track.is_none());
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let state = state.lock().unwrap();
+        assert!(state.track.is_some());
+        assert_eq!(state.position_ms, 200);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_seek_shows_a_held_back_change_at_once() {
+        let (events, state) = heard_events();
+        events
+            .send(PlayerEvent::TrackChanged {
+                audio_item: Box::new(interlude()),
+            })
+            .unwrap();
+        events
+            .send(PlayerEvent::Seeked {
+                play_request_id: 0,
+                track_id: uri(),
+                position_ms: 30_000,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let state = state.lock().unwrap();
+        assert!(state.track.is_some());
+        // The seek discards what was held: it is heard from there.
+        assert_eq!(state.position_ms, 30_000);
+    }
+
     #[test]
     fn each_loaded_track_has_a_new_history_sequence_but_seek_and_pause_do_not() {
         let item = interlude();
@@ -1616,6 +1826,7 @@ mod tests {
         let config = EngineConfig {
             buffer_ms: crate::sink::DEFAULT_BUFFER_MS,
             eq: crate::eq::shared(),
+            karaoke: crate::karaoke::Karaoke::shared(),
             device_name: "Spotlite".into(),
             bitrate_kbps: 320,
             normalisation: false,

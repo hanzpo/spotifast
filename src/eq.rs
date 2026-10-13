@@ -497,6 +497,8 @@ pub struct EqSink {
     applies_volume: bool,
     /// Final limiter, placed here because this stage knows the output volume.
     limiter: crate::limiter::Limiter,
+    /// Karaoke goes first: the model hears the mix as it was decoded.
+    karaoke: crate::karaoke::Stage,
 }
 
 impl EqSink {
@@ -506,6 +508,7 @@ impl EqSink {
         volume: Box<dyn VolumeGetter + Send>,
         applies_volume: bool,
         eq: SharedEq,
+        karaoke: crate::karaoke::SharedKaraoke,
     ) -> Self {
         Self {
             inner,
@@ -514,7 +517,23 @@ impl EqSink {
             volume,
             applies_volume,
             limiter: crate::limiter::Limiter::new(f64::from(SAMPLE_RATE)),
+            karaoke: crate::karaoke::Stage::new(karaoke),
         }
+    }
+
+    /// Equalizes, sets the volume and limits samples, and hands them on.
+    fn emit(&mut self, mut samples: Vec<f64>, converter: &mut Converter) -> SinkResult<()> {
+        self.eq.process(&mut samples);
+        let attenuation = self.volume.attenuation_factor();
+        if self.applies_volume {
+            for sample in &mut samples {
+                *sample *= attenuation;
+            }
+        }
+        if let Some(full_scale) = full_scale(attenuation, self.applies_volume) {
+            self.limiter.process(&mut samples, full_scale);
+        }
+        self.inner.write(AudioPacket::Samples(samples), converter)
     }
 }
 
@@ -539,6 +558,18 @@ impl Sink for EqSink {
     }
 
     fn stop(&mut self) -> SinkResult<()> {
+        // At the end of the music, the second karaoke holds is its last.
+        // Sound about to be replaced is not.
+        let rest = if self.control.processing_reset_pending() {
+            Vec::new()
+        } else {
+            self.karaoke.finish()
+        };
+        if !rest.is_empty() {
+            // librespot's own converter is only lent to `write`; this one
+            // does no dithering, which only 16-bit backends would add.
+            self.emit(rest, &mut Converter::new(None))?;
+        }
         self.inner.stop()
     }
 
@@ -546,24 +577,18 @@ impl Sink for EqSink {
         if self.control.take_processing_reset() {
             self.eq.reset();
             self.limiter = crate::limiter::Limiter::new(f64::from(SAMPLE_RATE));
+            self.karaoke.reset();
         }
-        let packet = match packet {
-            AudioPacket::Samples(mut samples) => {
-                self.eq.process(&mut samples);
-                let attenuation = self.volume.attenuation_factor();
-                if self.applies_volume {
-                    for sample in &mut samples {
-                        *sample *= attenuation;
-                    }
+        match packet {
+            AudioPacket::Samples(samples) => {
+                let samples = self.karaoke.process(samples);
+                if samples.is_empty() {
+                    return Ok(());
                 }
-                if let Some(full_scale) = full_scale(attenuation, self.applies_volume) {
-                    self.limiter.process(&mut samples, full_scale);
-                }
-                AudioPacket::Samples(samples)
+                self.emit(samples, converter)
             }
-            raw => raw,
-        };
-        self.inner.write(packet, converter)
+            raw => self.inner.write(raw, converter),
+        }
     }
 }
 
@@ -602,8 +627,76 @@ mod tests {
             Box::new(librespot_playback::mixer::NoOpVolume),
             false,
             eq,
+            crate::karaoke::Karaoke::shared(),
         );
         (tapped, recorded)
+    }
+
+    /// A sink with karaoke on, whose model calls everything the voice.
+    fn karaoke_tap() -> (
+        EqSink,
+        Arc<Mutex<Vec<f64>>>,
+        crate::karaoke::SharedKaraoke,
+        Arc<crate::sink::AudioControl>,
+    ) {
+        struct Everything;
+        impl crate::karaoke::Separator for Everything {
+            fn vocals(&mut self, audio: &[f32]) -> anyhow::Result<Vec<f32>> {
+                Ok(audio.to_vec())
+            }
+        }
+        let karaoke = crate::karaoke::Karaoke::shared();
+        karaoke.set_loader(Some(Arc::new(|| Ok(Box::new(Everything) as _))));
+        karaoke.set_enabled(true);
+        let control = crate::sink::AudioControl::new(crate::sink::DEFAULT_BUFFER_MS);
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let tapped = EqSink::new(
+            Box::new(RecordedSink(Arc::clone(&recorded))),
+            Arc::clone(&control),
+            Box::new(librespot_playback::mixer::NoOpVolume),
+            false,
+            crate::eq::shared(),
+            Arc::clone(&karaoke),
+        );
+        (tapped, recorded, karaoke, control)
+    }
+
+    /// Writes three seconds, letting the model load first.
+    fn write_seconds(tapped: &mut EqSink, karaoke: &crate::karaoke::Karaoke) {
+        for _ in 0..3 * 44_100 / 1024 {
+            write_level(tapped, 0.25);
+            while karaoke.status() == crate::karaoke::Status::Preparing {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+    }
+
+    #[test]
+    fn the_end_of_the_music_plays_out_what_karaoke_holds_and_a_pause_keeps_it() {
+        let (mut tapped, recorded, karaoke, _) = karaoke_tap();
+        write_seconds(&mut tapped, &karaoke);
+        let written = 3 * 44_100 / 1024 * 2048;
+        let before = recorded.lock().unwrap().len();
+        assert!(before < written);
+        tapped.stop().unwrap();
+        assert_eq!(recorded.lock().unwrap().len(), before, "a pause keeps it");
+        karaoke.track_ended();
+        tapped.stop().unwrap();
+        assert_eq!(recorded.lock().unwrap().len(), written, "the end plays it");
+    }
+
+    #[test]
+    fn a_track_loaded_while_paused_drops_what_karaoke_held() {
+        let (mut tapped, recorded, karaoke, control) = karaoke_tap();
+        write_seconds(&mut tapped, &karaoke);
+        tapped.stop().unwrap();
+        let before = recorded.lock().unwrap().len();
+        control.discard_processing();
+        tapped.start().unwrap();
+        write_level(&mut tapped, 0.5);
+        // Nothing of the old track comes out ahead of the new one.
+        assert_eq!(recorded.lock().unwrap().len(), before);
+        assert!(karaoke.lag() < std::time::Duration::from_millis(30));
     }
 
     fn write_level(tapped: &mut EqSink, level: f64) {

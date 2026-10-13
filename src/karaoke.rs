@@ -115,6 +115,16 @@ pub struct Karaoke {
 
 pub type SharedKaraoke = Arc<Karaoke>;
 
+impl std::fmt::Debug for Karaoke {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Karaoke")
+            .field("enabled", &self.enabled())
+            .field("status", &self.status())
+            .field("lag", &self.lag())
+            .finish()
+    }
+}
+
 impl Default for Karaoke {
     fn default() -> Self {
         Self {
@@ -180,6 +190,12 @@ impl Karaoke {
     pub fn lag(&self) -> Duration {
         let frames = self.held.load(Ordering::Relaxed);
         Duration::from_secs_f64(frames as f64 / f64::from(SAMPLE_RATE))
+    }
+
+    /// As if the stage held `frames`, for tests elsewhere.
+    #[cfg(test)]
+    pub(crate) fn hold(&self, frames: u64) {
+        self.held.store(frames, Ordering::Relaxed);
     }
 
     /// The decoder finished a track; see [`Karaoke::ended`].

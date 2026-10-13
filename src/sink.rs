@@ -177,6 +177,18 @@ impl AudioControl {
         !self.waiting_for_track() && self.reset_processing.swap(false, Ordering::SeqCst)
     }
 
+    /// Whether processing state is about to be discarded.
+    pub(crate) fn processing_reset_pending(&self) -> bool {
+        self.reset_processing.load(Ordering::SeqCst)
+    }
+
+    /// Discards what processing holds before the next sound, which belongs
+    /// to another track or position. Unlike `interrupt`, nothing is queued
+    /// to fade: playback is paused.
+    pub(crate) fn discard_processing(&self) {
+        self.reset_processing.store(true, Ordering::SeqCst);
+    }
+
     fn take_reset(&self) -> bool {
         self.reset_output.swap(false, Ordering::SeqCst)
     }

@@ -576,6 +576,8 @@ pub struct App {
     pub collapsed_folders: Vec<String>,
     /// The equalizer's settings, shared with the player.
     eq: crate::eq::SharedEq,
+    /// Karaoke, shared with the player.
+    pub(crate) karaoke: crate::karaoke::SharedKaraoke,
 }
 
 /// How many plays the Home shelf asks for: it shows sixteen cards.
@@ -683,6 +685,7 @@ impl App {
         if let Ok(mut shared) = eq.lock() {
             *shared = eq_settings(&settings);
         }
+        let karaoke = crate::karaoke::Karaoke::shared();
         let applied_proxy_preferences = settings.proxy_preferences();
         let applied_proxy = match settings.proxy_config() {
             Ok(proxy) => proxy,
@@ -693,6 +696,7 @@ impl App {
             &settings,
             applied_proxy.clone(),
             std::sync::Arc::clone(&eq),
+            std::sync::Arc::clone(&karaoke),
         );
         let backend = Backend::spawn(
             dirs.clone(),
@@ -957,6 +961,7 @@ impl App {
             pending_pastes: Vec::new(),
             collapsed_folders: session.collapsed_folders.clone(),
             eq,
+            karaoke,
         };
         app.local.volume = app.settings.volume;
         // What was played here is on disk and needs nothing from the
@@ -9159,6 +9164,7 @@ impl App {
                     &self.settings,
                     self.applied_proxy.clone(),
                     std::sync::Arc::clone(&self.eq),
+                    std::sync::Arc::clone(&self.karaoke),
                 );
                 self.backend.send(Command::RestartEngine(config));
                 if self.local_ready {
@@ -9987,9 +9993,11 @@ pub fn engine_config(
     settings: &Settings,
     proxy: crate::settings::ProxyConfig,
     eq: crate::eq::SharedEq,
+    karaoke: crate::karaoke::SharedKaraoke,
 ) -> EngineConfig {
     EngineConfig {
         eq,
+        karaoke,
         device_name: settings.device_name.trim().to_string(),
         bitrate_kbps: settings.bitrate,
         normalisation: settings.normalisation,
