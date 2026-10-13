@@ -87,3 +87,22 @@ fn hex(bytes: &[u8]) -> String {
         out
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fetches the real model into `KARAOKE_FETCH_DIR`, checking the
+    /// address and the digests here against what Hugging Face serves.
+    #[tokio::test]
+    #[ignore = "downloads 33 MB"]
+    async fn the_model_is_fetched_and_checked() {
+        let dir = PathBuf::from(std::env::var("KARAOKE_FETCH_DIR").unwrap());
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = fetch(&reqwest::Client::new(), &dir).await.unwrap();
+        assert!(installed(&dir));
+        assert_eq!(path, package(&dir));
+        // A second call finds it there.
+        assert_eq!(fetch(&reqwest::Client::new(), &dir).await.unwrap(), path);
+    }
+}
