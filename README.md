@@ -1,6 +1,6 @@
 # SwiftSpot
 
-**A native Spotify client for the Mac, made to feel like Music.**
+**A native Spotify client for the Mac, made to feel like Apple Music.**
 SwiftSpot is a SwiftUI app over a small Rust engine that plays through
 [librespot](https://github.com/librespot-org/librespot). There is no browser
 engine anywhere: the whole thing runs in about 140 MB.
@@ -11,7 +11,7 @@ engine anywhere: the whole thing runs in about 140 MB.
 
 ## What it does
 
-- **Music's layout:** a sidebar library, Home, Search, artist, album,
+- **Apple Music's layout:** a sidebar library, Home, Search, artist, album,
   playlist and podcast pages, and a Liquid Glass player bar.
 - **Karaoke:** the microphone takes the voice out of the song. A vocal
   separation model runs on the Neural Engine, on your Mac, and a slider
@@ -24,7 +24,7 @@ engine anywhere: the whole thing runs in about 140 MB.
 - **The queue:** Playing Next, which you can reorder and remove songs from,
   and History.
 - **Everything else:** Spotify Connect devices, a mini player, a sleep
-  timer, a ten-band equalizer, and Music's keyboard shortcuts.
+  timer, a ten-band equalizer, and Apple Music's keyboard shortcuts.
 
 ![A playlist with the lyrics panel and karaoke on](screenshots/playlist-lyrics.png)
 
