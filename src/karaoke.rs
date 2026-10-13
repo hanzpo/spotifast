@@ -45,6 +45,11 @@ const STEP: usize = SAMPLE_RATE as usize * 3 / 4;
 const FADE: usize = 1024;
 /// How long removal takes to come in or go out, in frames.
 const RAMP: usize = 4096;
+/// How far behind the decoder the stage plays. A stretch can only be
+/// separated once its lookahead has been decoded, and the model takes a
+/// moment over it; the rest is room for that moment, so the output never
+/// waits on the model and runs dry.
+const DELAY: usize = LOOKAHEAD + STEP + SAMPLE_RATE as usize * 3 / 10;
 /// The most the stage holds before it waits for the model.
 const LIMIT: usize = LOOKAHEAD + 2 * STEP;
 /// How long the player's thread waits for a late run before it plays that
@@ -392,11 +397,15 @@ impl Stage {
                 self.give_up_one();
             }
         }
-        // Out at the pace sound comes in, with room to catch up: a whole
-        // stretch at once would let the decoder run that far ahead again
-        // in the output queue, which counts packets, not seconds.
+        // Out a steady DELAY behind what comes in, and at most twice as
+        // fast as it comes in to catch up: a whole stretch at once would
+        // let the decoder run that far ahead again in the output queue,
+        // which counts packets, not seconds.
         let pace = samples.len() as u64; // twice the frames that came in
-        let until = self.ready.min(self.received).min(self.emitted + pace);
+        let until = self
+            .ready
+            .min(self.received.saturating_sub(DELAY as u64))
+            .min(self.emitted + pace);
         let out = self.give_out(until, false);
         self.publish();
         out
@@ -658,6 +667,45 @@ mod tests {
                 "sample {i}: {heard} for {played}"
             );
         }
+    }
+
+    /// Takes as long as the model does on a Mac, and calls half the voice.
+    struct Real;
+
+    impl Separator for Real {
+        fn vocals(&mut self, audio: &[f32]) -> Result<Vec<f32>> {
+            std::thread::sleep(Duration::from_millis(80));
+            Ok(audio.iter().map(|s| s * 0.5).collect())
+        }
+    }
+
+    #[test]
+    fn played_in_real_time_the_sound_never_stops_for_the_model() {
+        let control = control(|| Box::new(Real));
+        let mut stage = Stage::new(Arc::clone(&control));
+        let packet = 1_152;
+        let mut started = false;
+        let mut dry = 0;
+        let mut driest = 0;
+        for n in 0..SAMPLE_RATE as usize * 4 / packet {
+            let out = stage.process(music(n * packet, packet));
+            if out.is_empty() {
+                if started {
+                    dry += packet;
+                    driest = driest.max(dry);
+                }
+            } else {
+                started = true;
+                dry = 0;
+            }
+            // A packet's worth of time, as the output takes it.
+            std::thread::sleep(Duration::from_secs_f64(
+                packet as f64 / f64::from(SAMPLE_RATE),
+            ));
+        }
+        assert!(started);
+        // Never a packet without sound once it has begun.
+        assert_eq!(driest, 0, "{driest} frames without sound");
     }
 
     #[test]
