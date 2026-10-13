@@ -8456,15 +8456,34 @@ impl App {
                 if !self.queue_locally_reorderable() || index >= self.queued_rows_len() {
                     return;
                 }
-                // The rows on show follow the manual queue's order, so the
-                // row and the manual entry share the index.
                 self.show_manual_queue_order(self.queued_rows_len());
-                if let Loadable::Loaded(queue) = &mut self.queue
-                    && index < queue.queue.len()
-                {
+                let Loadable::Loaded(queue) = &self.queue else {
+                    return;
+                };
+                // The row names its song and which copy of it it is; the
+                // manual entry is that copy, wherever Spotify's answer has
+                // left gaps.
+                let Some(uri) = queue.queue.get(index).map(|row| row.uri().to_string()) else {
+                    return;
+                };
+                let copy = queue.queue[..index]
+                    .iter()
+                    .filter(|row| row.uri() == uri)
+                    .count();
+                let Some(entry) = self
+                    .manual_queue
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, queued)| **queued == uri)
+                    .nth(copy)
+                    .map(|(entry, _)| entry)
+                else {
+                    return;
+                };
+                if let Loadable::Loaded(queue) = &mut self.queue {
                     queue.queue.remove(index);
                 }
-                self.remove_manual_queue_row(index);
+                self.remove_manual_queue_row(entry);
                 self.resync_local_queue();
             }
             Action::InsertInQueue { items, position } => {
@@ -13899,6 +13918,19 @@ mod tests {
         // The context's rows aren't the app's to remove.
         app.apply(Action::RemoveFromQueue { index: 2 }, &ctx);
         assert_eq!(app.queued_rows_len(), 2);
+    }
+
+    #[test]
+    fn removing_a_row_removes_its_own_song_when_an_earlier_one_is_missing() {
+        let mut app = app_with_local_manual_queue();
+        // Spotify's answer has lost "a", which the app still has queued.
+        app.queue = loaded_queue(
+            "spotify:track:playing",
+            &["spotify:track:b", "spotify:track:c", "spotify:track:ctx"],
+        );
+        let ctx = egui::Context::default();
+        app.apply(Action::RemoveFromQueue { index: 0 }, &ctx);
+        assert_eq!(app.manual_queue, ["spotify:track:a", "spotify:track:c"]);
     }
 
     #[test]
