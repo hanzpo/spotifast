@@ -533,9 +533,22 @@ impl EqSink {
         if let Some(full_scale) = full_scale(attenuation, self.applies_volume) {
             self.limiter.process(&mut samples, full_scale);
         }
-        self.inner.write(AudioPacket::Samples(samples), converter)
+        if samples.len() <= MAX_PACKET {
+            return self.inner.write(AudioPacket::Samples(samples), converter);
+        }
+        // Karaoke can let a second out at once. The output queue limits
+        // itself by packets, so it is given packets of librespot's size.
+        for packet in samples.chunks(MAX_PACKET) {
+            self.inner
+                .write(AudioPacket::Samples(packet.to_vec()), converter)?;
+        }
+        Ok(())
     }
 }
+
+/// The most samples handed on in one packet, as many as librespot's
+/// largest.
+const MAX_PACKET: usize = 4096;
 
 /// Full-scale level for samples leaving `EqSink`.
 ///
@@ -683,6 +696,38 @@ mod tests {
         karaoke.track_ended();
         tapped.stop().unwrap();
         assert_eq!(recorded.lock().unwrap().len(), written, "the end plays it");
+    }
+
+    #[test]
+    fn a_second_let_out_at_once_goes_on_in_packets() {
+        struct Packets(Arc<Mutex<Vec<usize>>>);
+        impl Sink for Packets {
+            fn start(&mut self) -> SinkResult<()> {
+                Ok(())
+            }
+            fn stop(&mut self) -> SinkResult<()> {
+                Ok(())
+            }
+            fn write(&mut self, packet: AudioPacket, _: &mut Converter) -> SinkResult<()> {
+                self.0.lock().unwrap().push(packet.samples().unwrap().len());
+                Ok(())
+            }
+        }
+        let sizes = Arc::new(Mutex::new(Vec::new()));
+        let mut tapped = EqSink::new(
+            Box::new(Packets(Arc::clone(&sizes))),
+            crate::sink::AudioControl::new(crate::sink::DEFAULT_BUFFER_MS),
+            Box::new(librespot_playback::mixer::NoOpVolume),
+            false,
+            crate::eq::shared(),
+            crate::karaoke::Karaoke::shared(),
+        );
+        tapped
+            .emit(vec![0.1; 88_200], &mut Converter::new(None))
+            .unwrap();
+        let sizes = sizes.lock().unwrap();
+        assert_eq!(sizes.iter().sum::<usize>(), 88_200);
+        assert!(sizes.iter().all(|size| *size <= MAX_PACKET));
     }
 
     #[test]

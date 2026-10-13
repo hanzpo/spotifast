@@ -392,7 +392,12 @@ impl Stage {
                 self.give_up_one();
             }
         }
-        let out = self.give_out(self.ready.min(self.received), false);
+        // Out at the pace sound comes in, with room to catch up: a whole
+        // stretch at once would let the decoder run that far ahead again
+        // in the output queue, which counts packets, not seconds.
+        let pace = samples.len() as u64; // twice the frames that came in
+        let until = self.ready.min(self.received).min(self.emitted + pace);
+        let out = self.give_out(until, false);
         self.publish();
         out
     }
@@ -653,6 +658,30 @@ mod tests {
                 "sample {i}: {heard} for {played}"
             );
         }
+    }
+
+    #[test]
+    fn sound_goes_out_at_the_pace_it_comes_in() {
+        let control = control(|| Box::new(Half));
+        let mut stage = Stage::new(Arc::clone(&control));
+        let packet = 1_152;
+        for n in 0..SAMPLE_RATE as usize * 6 / packet {
+            let out = stage.process(music(n * packet, packet));
+            assert!(
+                out.len() <= packet * 4,
+                "{} frames for {packet}",
+                out.len() / 2
+            );
+            while control.status() == Status::Preparing {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        // And holds no more than its window's lookahead and a stretch or two.
+        assert!(
+            control.lag() < Duration::from_secs(2),
+            "{:?}",
+            control.lag()
+        );
     }
 
     #[test]
