@@ -4156,6 +4156,15 @@ async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiR
             offset: *offset,
             request: *request,
         },
+        ApiRequest::Show { id } => ApiResponse::Show {
+            result: Ok(ask(crate::pathfinder::show_details(session, id)).await?),
+            id: id.clone(),
+        },
+        ApiRequest::ShowEpisodes { id, offset } => ApiResponse::ShowEpisodes {
+            result: Ok(ask(crate::pathfinder::show_episodes(session, id, *offset)).await?),
+            id: id.clone(),
+            offset: *offset,
+        },
         ApiRequest::RelatedArtists { id } => ApiResponse::RelatedArtists {
             id: id.clone(),
             result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),

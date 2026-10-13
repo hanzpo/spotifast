@@ -1021,6 +1021,95 @@ fn album_names(value: &Value, names: &mut std::collections::HashMap<String, Stri
     }
 }
 
+/// A podcast's details, as Spotify's show page heads itself; its episodes
+/// come apart.
+pub async fn show_details(session: &Session, id: &str) -> anyhow::Result<Show> {
+    let data = query(
+        session,
+        "queryShowMetadataV2",
+        json!({
+            "uri": format!("spotify:show:{id}"),
+            "includeContentCapabilityTrait": false,
+            "includeEpisodeContentRatingsV2": false,
+        }),
+    )
+    .await?;
+    let podcast = &data["podcastUnionV2"];
+    let mut found = self::podcast(podcast).ok_or_else(|| anyhow!("Spotify has no show {id}"))?;
+    found.description = podcast["description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    Ok(found)
+}
+
+/// How many episodes a page of a show holds.
+const SHOW_PAGE: u32 = 50;
+
+/// A page of a podcast's episodes from `offset`, newest first. Spotify
+/// keeps some shows' episodes (video ones) from this client; a page with
+/// none it gives is a failure, for the Web API to answer.
+pub async fn show_episodes(
+    session: &Session,
+    id: &str,
+    offset: u32,
+) -> anyhow::Result<Page<Episode>> {
+    let data = query(
+        session,
+        "queryPodcastEpisodes",
+        json!({
+            "uri": format!("spotify:show:{id}"),
+            "offset": offset,
+            "limit": SHOW_PAGE,
+            "includeEpisodeContentRatingsV2": false,
+        }),
+    )
+    .await?;
+    let list = &data["podcastUnionV2"]["episodesV2"];
+    let rows = list["items"].as_array().map_or(0, Vec::len);
+    let page = episode_page(list, offset);
+    anyhow::ensure!(
+        rows == 0 || !page.items.is_empty(),
+        "Spotify keeps this show's episodes from pathfinder"
+    );
+    Ok(page)
+}
+
+fn episode_page(list: &Value, offset: u32) -> Page<Episode> {
+    let items: Vec<Episode> = list["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| item["entity"]["data"]["__typename"].as_str() == Some("Episode"))
+        .filter_map(|item| {
+            let data = &item["entity"]["data"];
+            let mut found = episode(&json!({ "data": data }))?;
+            let played = &data["playedState"];
+            found.resume_point =
+                played["state"]
+                    .as_str()
+                    .map(|state| crate::api::models::ResumePoint {
+                        fully_played: state == "COMPLETED",
+                        resume_position_ms: played["playPositionMilliseconds"]
+                            .as_u64()
+                            .unwrap_or_default() as u32,
+                    });
+            Some(found)
+        })
+        .collect();
+    let rows = list["items"].as_array().map_or(0, Vec::len) as u32;
+    let total = list["totalCount"]
+        .as_u64()
+        .map_or(offset + rows, |total| total as u32);
+    Page {
+        next: (offset + rows < total && rows > 0).then(|| "pathfinder".to_string()),
+        limit: SHOW_PAGE,
+        offset,
+        total,
+        items,
+    }
+}
+
 /// How many songs a page of an album holds, as the Web API pages them.
 const ALBUM_PAGE: u32 = 50;
 
@@ -1719,6 +1808,29 @@ mod tests {
         let song = &songs.items[0];
         assert_eq!(song.track_number, Some(5));
         assert_eq!(song.album.as_ref().unwrap().name, "Parachutes");
+    }
+
+    #[test]
+    fn a_show_page_keeps_its_episodes_and_where_they_were_left() {
+        let list = json!({ "totalCount": 3004, "items": [
+            { "entity": { "data": {
+                "__typename": "Episode",
+                "uri": "spotify:episode:0R8OSIOVKcRRLUNVXQbM9f",
+                "name": "The Israeli Film Directors",
+                "duration": { "totalMilliseconds": 1931729 },
+                "releaseDate": { "isoString": "2026-10-12T09:50:00Z" },
+                "playedState": { "state": "IN_PROGRESS", "playPositionMilliseconds": 60000 }
+            } } },
+            { "entity": { "data": { "__typename": "RestrictedContent" } } }
+        ] });
+        let page = episode_page(&list, 0);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3004);
+        assert!(page.next.is_some());
+        let resume = page.items[0].resume_point.as_ref().unwrap();
+        assert_eq!(resume.resume_position_ms, 60000);
+        assert!(!resume.fully_played);
+        assert_eq!(page.items[0].release_date.as_deref(), Some("2026-10-12"));
     }
 
     #[test]
