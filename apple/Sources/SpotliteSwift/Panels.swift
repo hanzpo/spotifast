@@ -258,10 +258,12 @@ struct LyricsView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if lyrics?.instrumental == true {
                 ContentUnavailableView("Instrumental", systemImage: "pianokeys")
+                    .frame(maxHeight: .infinity)
             } else {
                 ContentUnavailableView(
                     model.player.hasSong ? "No lyrics for this song" : "Nothing playing",
                     systemImage: "quote.bubble")
+                    .frame(maxHeight: .infinity)
             }
         }
         .task(id: model.player.uri) { await model.loadLyrics() }
