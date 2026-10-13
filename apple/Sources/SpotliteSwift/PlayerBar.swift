@@ -79,22 +79,32 @@ struct PlayerBar: View {
 }
 
 /// Karaoke's microphone: takes the voice out of the song on this Mac.
+/// `glass` draws it round, as the full-window player's buttons are.
 struct KaraokeButton: View {
     @Environment(AppModel.self) private var model
+    var glass = false
 
     var body: some View {
         let player = model.player
         if let karaoke = player.karaoke, karaoke.available, player.local != false {
-            Button(action: model.toggleKaraoke) {
-                if karaoke.busy {
-                    ProgressView().controlSize(.mini).frame(width: 16)
-                } else {
-                    Image(systemName: "music.mic")
-                        .foregroundStyle(karaoke.on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            let button = Button(action: model.toggleKaraoke) {
+                Group {
+                    if karaoke.busy {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "music.mic")
+                            .foregroundStyle(karaoke.on ? AnyShapeStyle(.tint) : AnyShapeStyle(glass ? .primary : .secondary))
+                    }
                 }
+                .frame(width: glass ? 30 : 16, height: glass ? 30 : nil)
             }
             .help(Self.help(karaoke))
             .disabled(!player.hasSong && !karaoke.on)
+            if glass {
+                button.buttonStyle(.glass).buttonBorderShape(.circle)
+            } else {
+                button.buttonStyle(.plain)
+            }
         }
     }
 
@@ -108,47 +118,37 @@ struct KaraokeButton: View {
     }
 }
 
-/// The microphone and, while karaoke is on, how much of the voice to keep.
-struct KaraokeControls: View {
+/// How much of the voice karaoke keeps, shown while it is on.
+struct VocalSlider: View {
     @Environment(AppModel.self) private var model
     @State private var dragging: Double?
+    var width: CGFloat = 120
 
     var body: some View {
-        if let karaoke = model.player.karaoke, karaoke.available, model.player.local != false {
-            HStack(spacing: 10) {
-                KaraokeButton()
-                    .buttonStyle(.plain)
-                if karaoke.on {
-                    Image(systemName: "person.wave.2")
-                        .foregroundStyle(.secondary)
-                        .help("Vocals")
-                    Slider(
-                        value: Binding(
-                            get: { dragging ?? karaoke.level },
-                            set: { value in
-                                dragging = value
-                                model.setVocalLevel(value, done: false)
-                            }),
-                        in: 0...1
-                    ) { editing in
-                        if !editing, let value = dragging {
-                            model.setVocalLevel(value, done: true)
-                            dragging = nil
-                        }
-                    }
-                    .controlSize(.small)
-                    .frame(maxWidth: 180)
-                    .help("Vocals")
-                    if karaoke.busy {
-                        Text(KaraokeButton.help(karaoke))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+        if let karaoke = model.player.karaoke, karaoke.on, model.player.local != false {
+            HStack(spacing: 6) {
+                Image(systemName: "person.wave.2")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(
+                        get: { dragging ?? karaoke.level },
+                        set: { value in
+                            dragging = value
+                            model.setVocalLevel(value, done: false)
+                        }),
+                    in: 0...1
+                ) { editing in
+                    if !editing, let value = dragging {
+                        model.setVocalLevel(value, done: true)
+                        dragging = nil
                     }
                 }
-                Spacer()
+                .controlSize(.mini)
+                .frame(width: width)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 6)
+            .help("Vocals")
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
 }

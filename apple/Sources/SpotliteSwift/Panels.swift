@@ -176,14 +176,21 @@ struct QueueRow: View {
     }
 }
 
-struct PanelHeader: View {
+struct PanelHeader<Accessory: View>: View {
     @Environment(AppModel.self) private var model
     var title: String
+    @ViewBuilder var accessory: Accessory
+
+    init(title: String, @ViewBuilder accessory: () -> Accessory = { EmptyView() }) {
+        self.title = title
+        self.accessory = accessory()
+    }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Text(title).font(.title3.weight(.bold))
             Spacer()
+            accessory
             Button { model.panel = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -209,8 +216,12 @@ struct LyricsView: View {
     var body: some View {
         let lyrics = model.lyrics
         VStack(spacing: 0) {
-            if header { PanelHeader(title: "Lyrics") }
-            KaraokeControls()
+            if header {
+                PanelHeader(title: "Lyrics") {
+                    VocalSlider(width: 80)
+                    KaraokeButton()
+                }
+            }
             if let lyrics, !lyrics.lines.isEmpty, lyrics.uri == model.player.uri {
                 TimelineView(.periodic(from: .now, by: 0.25)) { context in
                     let position = model.position(at: context.date)
@@ -425,6 +436,13 @@ struct NowPlayingView: View {
                         .keyboardShortcut(.escape, modifiers: [])
                         .help("Close")
                         Spacer()
+                        if player.karaoke?.on == true, player.local != false {
+                            VocalSlider(width: 140)
+                                .padding(.horizontal, 14)
+                                .frame(height: 38)
+                                .glassEffect(.regular, in: .capsule)
+                        }
+                        KaraokeButton(glass: true)
                         Button { lyrics.toggle() } label: {
                             Image(systemName: "quote.bubble").frame(width: 30, height: 30)
                         }
