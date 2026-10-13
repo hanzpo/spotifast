@@ -19905,6 +19905,61 @@ mod tests {
     }
 
     #[test]
+    fn playing_the_second_copy_of_a_song_starts_there() {
+        let mut app = headless_app();
+        let mut items = PagedList::default();
+        items.restore_cached(
+            vec![
+                cached_playlist_row("spotify:track:twice"),
+                cached_playlist_row("spotify:track:between"),
+                cached_playlist_row("spotify:track:twice"),
+            ],
+            3,
+            None,
+        );
+        app.playlist_pages.insert(
+            "mix".into(),
+            PlaylistPage {
+                items,
+                ..Default::default()
+            },
+        );
+        let play = |app: &mut App, uri: &str, place: u32| {
+            app.actions.clear();
+            app.answer(&crate::server::Request {
+                client: 0,
+                id: serde_json::json!(1),
+                method: "player.play".into(),
+                params: serde_json::json!({
+                    "context": "spotify:playlist:mix",
+                    "uri": uri,
+                    "index": place,
+                    "spotify_position": place,
+                }),
+            })
+            .unwrap();
+            app.actions.pop().unwrap()
+        };
+        assert!(matches!(
+            play(&mut app, "spotify:track:twice", 2),
+            Action::PlayContext {
+                offset_uri: None,
+                offset_index: Some(2),
+                ..
+            }
+        ));
+        // A song held once still starts by its URI.
+        assert!(matches!(
+            play(&mut app, "spotify:track:between", 1),
+            Action::PlayContext {
+                offset_uri: Some(_),
+                offset_index: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn removing_one_copy_of_a_song_keeps_the_others() {
         let mut app = headless_app();
         app.backend.set_offline(true);

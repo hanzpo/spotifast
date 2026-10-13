@@ -301,6 +301,7 @@ final class AppModel {
         } else if let context {
             params["context"] = context
             params["index"] = track.position
+            if let place = track.spotifyPosition { params["spotify_position"] = place }
         } else if track.isEpisode {
             if let resume = track.resumeMs, track.played != true { params["resume_ms"] = resume }
         } else if let tracks {

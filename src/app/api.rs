@@ -501,7 +501,7 @@ impl App {
         }
     }
 
-    fn answer(&mut self, request: &Request) -> Result<Value, String> {
+    pub(super) fn answer(&mut self, request: &Request) -> Result<Value, String> {
         let params = &request.params;
         let ok = || Ok(json!({ "ok": true }));
         match request.method.as_str() {
@@ -620,6 +620,22 @@ impl App {
                         uri: uri.to_string(),
                         index: index.unwrap_or(0),
                     },
+                    // A song a playlist holds more than once starts at the
+                    // copy played: by its place in Spotify's copy, which
+                    // the player takes only without the song's URI.
+                    (Some(context), Some(uri))
+                        if let Some(position) = params
+                            .get("spotify_position")
+                            .and_then(Value::as_u64)
+                            .and_then(|position| u32::try_from(position).ok())
+                            && self.playlist_holds_twice(context, uri) =>
+                    {
+                        Action::PlayContext {
+                            uri: context.to_string(),
+                            offset_uri: None,
+                            offset_index: Some(position),
+                        }
+                    }
                     (Some(context), _) => Action::PlayContext {
                         uri: context.to_string(),
                         offset_uri: uri.map(str::to_string),
@@ -1438,6 +1454,22 @@ impl App {
             "rows": rows,
             "liked_context": self.liked_context(),
         })
+    }
+
+    /// Whether the loaded rows of the playlist `context` names hold `uri`
+    /// more than once.
+    fn playlist_holds_twice(&self, context: &str, uri: &str) -> bool {
+        context
+            .strip_prefix("spotify:playlist:")
+            .and_then(|id| self.playlist_pages.get(id))
+            .is_some_and(|page| {
+                page.items
+                    .items
+                    .iter()
+                    .filter(|row| row.playable().is_some_and(|item| item.uri() == uri))
+                    .nth(1)
+                    .is_some()
+            })
     }
 
     fn liked_context(&self) -> Option<String> {
