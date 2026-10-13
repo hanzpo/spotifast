@@ -321,7 +321,8 @@ connector. The change adds no destination or background polling.
 
 ## Spotify's own GraphQL service
 
-Home, search, and an artist's similar artists come from pathfinder, the
+Home, search, artist, album and podcast pages, and an artist's similar
+artists come from pathfinder, the
 GraphQL service Spotify's desktop and web apps read their pages from
 (`api-partner.spotify.com/pathfinder/v2/query`). The engine sends the same
 persisted queries those apps do, with the streaming session's own token and
@@ -333,8 +334,9 @@ from the desktop app installed on this Mac
 (`/Applications/Spotify.app/.../xpui.spa`) and from the web player's page
 and main script at `open.spotify.com` (fetched with the app's own HTTP
 client and proxy settings), and asks once more if the query's hash changed.
-A query that still fails falls back: search and similar artists to the Web
-API, Home to the shelves the app makes up itself.
+A query that still fails falls back: Home to the shelves the app makes up
+itself, everything else to the Web API. Spotify keeps video podcasts'
+episodes from this client, so those come from the Web API too.
 
 Pathfinder answers for the session's account. It is asked before the shared
 app has confirmed the Web API's account, and never when the Web API is
