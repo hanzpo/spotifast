@@ -43,8 +43,12 @@ const RAMP: usize = 4096;
 /// The most the stage holds before it waits for the model.
 const LIMIT: usize = LOOKAHEAD + 2 * STEP;
 /// How long the player's thread waits for a late run before it plays that
-/// stretch as it is. The output queue holds more than this.
-const PATIENCE: Duration = Duration::from_millis(60);
+/// stretch as it is. Playing along, the model is never late: it runs in a
+/// tenth of the time a stretch takes to play. It is waited for just after a
+/// seek, when the decoder has raced ahead and nothing is queued to play, so
+/// this is the most a seek can be held up. A model still loading is not
+/// waited for at all.
+const PATIENCE: Duration = Duration::from_millis(250);
 
 /// Separates the voice from a window of the mix.
 pub trait Separator: Send {
@@ -444,6 +448,9 @@ impl Stage {
                 return got;
             };
             let done = if block && !got {
+                if self.control.status() != Status::Running {
+                    return false;
+                }
                 match worker.done.recv_timeout(PATIENCE) {
                     Ok(done) => done,
                     Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {
@@ -594,6 +601,11 @@ mod tests {
             let frames = packet.min(total - fed);
             out.extend(stage.process(music(fed, frames)));
             fed += frames;
+            // The model loads before the music goes on, as a real one
+            // would in the time the first packets take to play.
+            while stage.control.status() == Status::Preparing {
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
         out
     }
