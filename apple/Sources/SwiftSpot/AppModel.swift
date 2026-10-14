@@ -222,6 +222,9 @@ final class AppModel {
             }
         case "queue":
             if panel == .queue { Task { await loadQueue() } }
+        case "lyrics":
+            // Words placed in the song: a lyrics view shows them sung.
+            if lyrics != nil { Task { await loadLyrics() } }
         case "toast":
             struct Message: Decodable { var message: String }
             if let toast = try? JSONDecoder.api.decode(Message.self, from: data) {

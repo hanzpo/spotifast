@@ -295,6 +295,16 @@ struct DevicesState: Codable, Sendable {
 struct LyricsLine: Codable, Hashable, Sendable {
     var timeMs: Int?
     var text: String
+    /// The line's words and when each of their letters is sung, once the
+    /// engine has placed them in the song.
+    var words: [LyricWord]?
+}
+
+/// A word of a lyric line: `marks[i]` is when its `i`th character starts,
+/// and the last mark when the word ends.
+struct LyricWord: Codable, Hashable, Sendable {
+    var text: String
+    var marks: [Int]
 }
 
 struct LyricsState: Codable, Sendable {

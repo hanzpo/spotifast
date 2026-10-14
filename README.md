@@ -17,7 +17,9 @@ engine anywhere: the whole thing runs in about 140 MB.
   separation model runs on the Neural Engine, on your Mac, and a slider
   sets how much of the voice stays.
 - **Lyrics:** time-synced, following the song, and a line seeks when
-  clicked. There's also a full-window player with the lyrics beside it.
+  clicked. The line being sung lights up word by word, letter by letter,
+  placed in the song by a speech model on your Mac. There's also a
+  full-window player with the lyrics beside it.
 - **Your library:** playlists you can create, edit and reorder, including
   removing just one copy of a duplicated song. Also Liked Songs, Recently
   Added, Top Songs, albums, artists, podcasts and saved episodes.
@@ -83,6 +85,17 @@ Kimberley Jensen, in the Core ML conversion by
 [gyoom](https://huggingface.co/gyoom/UVR-MDX-CoreML) (MIT). It holds the
 music back by about a second so it can hear a little ahead; the lyrics and
 the progress bar account for that.
+
+## Word-by-word lyrics
+
+Spotify times each line of its lyrics; SwiftSpot finds when each word, and
+each letter of it, is sung. It decodes the song, takes the voice out with
+karaoke's model, and has wav2vec2 hear it as letters, then lines the lyrics
+up against them. The first time, it downloads that model (189 MB), Facebook's
+wav2vec2-base-960h in the Core ML conversion by
+[FinDIT Studio](https://huggingface.co/FinDIT-Studio/alignkit-coreml)
+(Apache-2.0), pinned and checked like the vocal model. A song takes a few
+seconds and is remembered; the next song in the queue is done ahead.
 
 ## Credits
 

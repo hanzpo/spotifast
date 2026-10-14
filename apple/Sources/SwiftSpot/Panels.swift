@@ -230,9 +230,15 @@ struct LyricsView: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 18) {
                                 ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
-                                    Text(line.text.isEmpty ? "♪" : line.text)
+                                    Group {
+                                        if index == active, let words = line.words, !words.isEmpty {
+                                            SungLine(words: words)
+                                        } else {
+                                            Text(line.text.isEmpty ? "♪" : line.text)
+                                                .foregroundStyle(lineStyle(index: index, active: active, synced: lyrics.synced))
+                                        }
+                                    }
                                         .font(.system(size: size, weight: .bold))
-                                        .foregroundStyle(lineStyle(index: index, active: active, synced: lyrics.synced))
                                         .multilineTextAlignment(.leading)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .id(index)
@@ -290,6 +296,94 @@ struct LyricsView: View {
     }
 }
 
+/// The line being sung, lit letter by letter as each is sung, as Music
+/// does: what is sung is bright, what is to come dim, and the letter being
+/// sung fills from its left with a soft edge.
+struct SungLine: View {
+    @Environment(AppModel.self) private var model
+    var words: [LyricWord]
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            words.enumerated().reduce(Text("")) { line, item in
+                let (index, word) = item
+                let spoken = Text(word.text).customAttribute(WordMarks(marks: word.marks))
+                return index == 0 ? spoken : line + Text(" ") + spoken
+            }
+            .textRenderer(SungRenderer(position: Double(model.position(at: context.date))))
+        }
+    }
+}
+
+/// When each character of a word starts, and when the word ends.
+struct WordMarks: TextAttribute {
+    var marks: [Int]
+
+    /// How much of character `index` of `count` has been sung at
+    /// `position`, from 0 to 1. Characters the marks don't cover (a word
+    /// drawn with more glyphs than characters) share the word evenly.
+    func sung(_ index: Int, of count: Int, at position: Double) -> Double {
+        guard let start = marks.first, let end = marks.last else { return 1 }
+        let characters = marks.count - 1
+        if count != characters {
+            let whole = end > start ? (position - Double(start)) / Double(end - start) : (position >= Double(end) ? 1 : 0)
+            return min(max(whole * Double(count) - Double(index), 0), 1)
+        }
+        let from = Double(marks[index]), to = Double(marks[index + 1])
+        if position >= to { return 1 }
+        if position <= from { return 0 }
+        return (position - from) / (to - from)
+    }
+}
+
+struct SungRenderer: TextRenderer {
+    var position: Double
+    /// How wide the soft edge of the fill is, in points.
+    private let feather: CGFloat = 6
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout {
+            for run in line {
+                guard let marks = run[WordMarks.self] else {
+                    var dim = context
+                    dim.opacity = 0.3
+                    dim.draw(run)
+                    continue
+                }
+                let glyphs = Array(run)
+                for (index, glyph) in glyphs.enumerated() {
+                    let sung = marks.sung(index, of: glyphs.count, at: position)
+                    if sung >= 1 {
+                        context.draw(glyph)
+                        continue
+                    }
+                    var dim = context
+                    dim.opacity = 0.3
+                    dim.draw(glyph)
+                    guard sung > 0 else { continue }
+                    let bounds = glyph.typographicBounds.rect.insetBy(dx: 0, dy: -4)
+                    let edge = bounds.minX + bounds.width * sung
+                    var lit = context
+                    lit.clipToLayer { layer in
+                        layer.fill(
+                            Path(bounds),
+                            with: .linearGradient(
+                                Gradient(stops: [
+                                    .init(color: .black, location: 0),
+                                    .init(color: .black, location: max(0, (edge - feather - bounds.minX) / bounds.width)),
+                                    .init(color: .clear, location: min(1, (edge - bounds.minX) / bounds.width)),
+                                ]),
+                                startPoint: CGPoint(x: bounds.minX, y: bounds.midY),
+                                endPoint: CGPoint(x: bounds.maxX, y: bounds.midY)))
+                    }
+                    lit.draw(glyph)
+                }
+            }
+        }
+    }
+}
+
+// MARK: Devices
 // MARK: Devices
 
 /// Spotify Connect: where playback goes.
