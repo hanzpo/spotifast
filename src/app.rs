@@ -5717,7 +5717,9 @@ impl App {
                     self.sync_liked_songs();
                     self.checkpoint_liked_songs(false);
                 }
-                if succeeded && (more || self.table_sorts.contains_key(&Page::LikedSongs)) {
+                // The whole list loads, as Spotify's own apps keep it, so
+                // finding a song in it searches every one of them.
+                if succeeded {
                     self.load_more(Page::LikedSongs);
                 }
             }
@@ -22985,6 +22987,47 @@ mod tests {
             assert_eq!(shown, expected, "after page {page}");
         }
         assert_eq!(app.library.liked.items.len(), 299);
+        app.backend.shutdown();
+    }
+
+    #[test]
+    fn liked_songs_load_to_the_end_so_finding_searches_them_all() {
+        use crate::api::models::SavedTrack;
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        app.user = Some(User {
+            id: "alice".into(),
+            ..Default::default()
+        });
+        app.liked_songs.cache_checked = true;
+        app.liked_songs.generation = 1;
+        let song = |n: u32| SavedTrack {
+            track: Track {
+                uri: format!("spotify:track:{n}"),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!app.table_sorts.contains_key(&Page::LikedSongs));
+        for (offset, last) in [(0, false), (1000, true)] {
+            app.handle_api(ApiResponse::SavedTracks {
+                offset,
+                generation: 1,
+                account_id: Some("alice".into()),
+                result: Ok(crate::api::models::Page {
+                    items: (offset..offset + 1000).map(song).collect(),
+                    total: 2000,
+                    limit: 1000,
+                    offset,
+                    next: (!last).then(|| "pathfinder".into()),
+                }),
+            });
+            assert_eq!(
+                app.library.liked.loading, !last,
+                "the next page is asked for unsorted, after offset {offset}"
+            );
+        }
+        assert_eq!(app.library.liked.items.len(), 2000);
         app.backend.shutdown();
     }
 

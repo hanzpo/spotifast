@@ -4218,6 +4218,12 @@ async fn pathfinder_answer(engine: &Engine, request: &ApiRequest) -> Option<ApiR
             id: id.clone(),
             result: Ok(ask(crate::pathfinder::related_artists(session, id)).await?),
         },
+        ApiRequest::SavedTracks { offset, generation } => ApiResponse::SavedTracks {
+            result: Ok(ask(crate::pathfinder::liked_songs(session, *offset)).await?),
+            offset: *offset,
+            generation: *generation,
+            account_id: Some(session.username()),
+        },
         ApiRequest::Search { query, serial } | ApiRequest::SearchCatalogue { query, serial } => {
             let playlists = matches!(request, ApiRequest::Search { .. });
             ApiResponse::Search {

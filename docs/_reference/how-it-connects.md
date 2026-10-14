@@ -343,8 +343,8 @@ connector. The change adds no destination or background polling.
 
 ## Spotify's own GraphQL service
 
-Home, search, artist, album and podcast pages, and an artist's similar
-artists come from pathfinder, the
+Home, search, artist, album and podcast pages, an artist's similar
+artists, and Liked Songs come from pathfinder, the
 GraphQL service Spotify's desktop and web apps read their pages from
 (`api-partner.spotify.com/pathfinder/v2/query`). The engine sends the same
 persisted queries those apps do, with the streaming session's own token and
@@ -359,6 +359,10 @@ client and proxy settings), and asks once more if the query's hash changed.
 A query that still fails falls back: Home to the shelves the app makes up
 itself, everything else to the Web API. Spotify keeps video podcasts'
 episodes from this client, so those come from the Web API too.
+
+Liked Songs is read whole, a thousand songs a request, as Spotify's own
+apps keep the collection, so Find searches every liked song rather than the
+pages scrolled into view.
 
 Pathfinder answers for the session's account. It is asked before the shared
 app has confirmed the Web API's account, and never when the Web API is

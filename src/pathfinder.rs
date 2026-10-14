@@ -17,7 +17,8 @@ use librespot_core::Session;
 use serde_json::{Value, json};
 
 use crate::api::models::{
-    Album, Artist, ArtistRef, Episode, Image, Owner, Page, Playlist, SearchResults, Show, Track,
+    Album, Artist, ArtistRef, Episode, Image, Owner, Page, Playlist, SavedTrack, SearchResults,
+    Show, Track,
 };
 
 const ENDPOINT: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
@@ -1219,6 +1220,55 @@ fn album_songs(data: &Value, album: &Album, offset: u32) -> Page<Track> {
     }
 }
 
+/// How many liked songs a page holds. Spotify's own apps read the whole
+/// collection to search it; a page this size takes about a second, so the
+/// list fills in quickly without one long wait for all of it.
+pub const LIKED_PAGE: u32 = 1000;
+
+/// A page of the account's Liked Songs from `offset`, newest first.
+pub async fn liked_songs(session: &Session, offset: u32) -> anyhow::Result<Page<SavedTrack>> {
+    let data = query(
+        session,
+        "fetchLibraryTracks",
+        json!({ "offset": offset, "limit": LIKED_PAGE }),
+    )
+    .await?;
+    let list = &data["me"]["library"]["tracks"];
+    if list["__typename"].as_str() != Some("UserLibraryTrackPage") {
+        return Err(anyhow!("Spotify gave no page of Liked Songs"));
+    }
+    Ok(liked_page(list, offset))
+}
+
+fn liked_page(list: &Value, offset: u32) -> Page<SavedTrack> {
+    let items: Vec<SavedTrack> = list["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            // The song's URI sits beside its data rather than in it.
+            let mut data = item["track"]["data"].clone();
+            data["uri"] = item["track"]["_uri"].clone();
+            let mut song = track(&data)?;
+            song.track_number = data["trackNumber"].as_u64().map(|number| number as u32);
+            song.disc_number = data["discNumber"].as_u64().map(|number| number as u32);
+            Some(SavedTrack {
+                added_at: item["addedAt"]["isoString"].as_str().map(str::to_string),
+                track: song,
+            })
+        })
+        .collect();
+    let total = list["totalCount"].as_u64().unwrap_or_default() as u32;
+    Page {
+        next: ((offset as usize + items.len()) < total as usize && !items.is_empty())
+            .then(|| "pathfinder".to_string()),
+        limit: LIKED_PAGE,
+        offset,
+        total,
+        items,
+    }
+}
+
 /// The artists Spotify relates to one, as its artist page lists them.
 pub async fn related_artists(session: &Session, id: &str) -> anyhow::Result<Vec<Artist>> {
     let data = query(
@@ -1808,6 +1858,42 @@ mod tests {
         let song = &songs.items[0];
         assert_eq!(song.track_number, Some(5));
         assert_eq!(song.album.as_ref().unwrap().name, "Parachutes");
+    }
+
+    #[test]
+    fn a_page_of_liked_songs_keeps_when_each_was_liked() {
+        let list = json!({
+            "__typename": "UserLibraryTrackPage",
+            "totalCount": 3739,
+            "pagingInfo": { "offset": 1000, "limit": 1000 },
+            "items": [{
+                "addedAt": { "isoString": "2026-10-13T00:03:07Z" },
+                "track": { "_uri": "spotify:track:5UXJzLFdBn6u9FJTCnoHrH", "data": {
+                    "__typename": "Track",
+                    "name": "Memories",
+                    "trackNumber": 11,
+                    "discNumber": 1,
+                    "duration": { "totalMilliseconds": 248818 },
+                    "contentRating": { "label": "NONE" },
+                    "playability": { "playable": true },
+                    "artists": { "items": [{ "uri": "spotify:artist:4Uc8Dsxct0oMqx0P6i60ea", "profile": { "name": "Conan Gray" } }] },
+                    "albumOfTrack": { "uri": "spotify:album:5hIOd0FvjlgG4uLjXHkFWI", "name": "Superache", "coverArt": { "sources": [] } }
+                } }
+            }]
+        });
+        let page = liked_page(&list, 1000);
+        assert_eq!(page.total, 3739);
+        assert_eq!(page.next_offset(), Some(2000));
+        let saved = &page.items[0];
+        assert_eq!(saved.added_at.as_deref(), Some("2026-10-13T00:03:07Z"));
+        assert_eq!(saved.track.uri, "spotify:track:5UXJzLFdBn6u9FJTCnoHrH");
+        assert_eq!(saved.track.id.as_deref(), Some("5UXJzLFdBn6u9FJTCnoHrH"));
+        assert_eq!(saved.track.artists[0].name, "Conan Gray");
+        assert_eq!(saved.track.album.as_ref().unwrap().name, "Superache");
+        assert_eq!(saved.track.track_number, Some(11));
+
+        let last = liked_page(&json!({ "totalCount": 3739, "items": list["items"] }), 3738);
+        assert_eq!(last.next_offset(), None, "the last song ends the list");
     }
 
     #[test]
