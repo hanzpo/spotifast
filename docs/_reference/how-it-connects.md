@@ -136,7 +136,10 @@ current-track pickup.
   on a Mac, it downloads the letter model for word-by-word lyrics (189 MB)
   from a fixed revision of
   [FinDIT-Studio/alignkit-coreml](https://huggingface.co/FinDIT-Studio/alignkit-coreml)
-  the same way. It does not check for or download updates.
+  the same way, once the playing song has finished downloading so the two
+  do not compete. Word timing reads songs only from the player's own copy
+  in the audio cache and never downloads one itself. It does not check for
+  or download updates.
 
 ## Karaoke
 

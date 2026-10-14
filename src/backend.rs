@@ -3335,6 +3335,12 @@ impl Worker {
                 let opened = async {
                     let engine = engine.ok_or("Spotify isn't connected")?;
                     let http = http?;
+                    // The song first: it waits for the player to have all
+                    // of it, and the model's first download waits with it,
+                    // so neither takes the network from the music.
+                    let track = crate::words::audio::open(engine.session(), &uri)
+                        .await
+                        .map_err(|error| format!("{error:#}"))?;
                     tokio::fs::create_dir_all(&dir)
                         .await
                         .map_err(|error| error.to_string())?;
@@ -3342,9 +3348,6 @@ impl Worker {
                         .fetch(&http, &dir)
                         .await
                         .map_err(|error| format!("fetching the letter model: {error:#}"))?;
-                    let track = crate::words::audio::open(engine.session(), &uri)
-                        .await
-                        .map_err(|error| format!("{error:#}"))?;
                     Ok::<_, String>((aligner, track))
                 }
                 .await;
