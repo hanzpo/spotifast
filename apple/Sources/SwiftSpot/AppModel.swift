@@ -156,6 +156,7 @@ final class AppModel {
             }
         }
         if let query = environment["SWIFTSPOT_SEARCH"] { searchText = query }
+        if let text = environment["SWIFTSPOT_FIND"] { findText = text }
         panel = environment["SWIFTSPOT_PANEL"].flatMap(Panel.init(rawValue:))
         showNowPlaying = environment["SWIFTSPOT_NOW_PLAYING"] != nil
     }
