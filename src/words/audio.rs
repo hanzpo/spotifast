@@ -91,25 +91,31 @@ impl Track {
     pub fn decode(self) -> Result<Vec<f32>> {
         let ogg = AudioFiles::is_ogg_vorbis(self.format);
         let offset = if ogg { OGG_HEADER_END } else { 0 };
-        let source = Subfile::new(self.file, offset, self.length)?;
-        let mut hint = Hint::new();
-        if let Some(mime) = AudioFiles::mime_type(self.format) {
-            hint.mime_type(mime);
-        }
-        let mut decoder =
-            SymphoniaDecoder::new(source, hint).map_err(|error| anyhow!("{error}"))?;
-        let mut samples = Vec::new();
-        while let Some((_, packet)) = decoder
-            .next_packet()
-            .map_err(|error| anyhow!("{error}"))
-            .context("decoding the song")?
-        {
-            if let Ok(decoded) = packet.samples() {
-                samples.extend(decoded.iter().map(|&sample| sample as f32));
-            }
-        }
-        Ok(samples)
+        decode(
+            Subfile::new(self.file, offset, self.length)?,
+            AudioFiles::mime_type(self.format),
+        )
     }
+}
+
+/// Decodes all of `source`, a file of the type `mime` names.
+fn decode(source: impl MediaSource + 'static, mime: Option<&str>) -> Result<Vec<f32>> {
+    let mut hint = Hint::new();
+    if let Some(mime) = mime {
+        hint.mime_type(mime);
+    }
+    let mut decoder = SymphoniaDecoder::new(source, hint).map_err(|error| anyhow!("{error}"))?;
+    let mut samples = Vec::new();
+    while let Some((_, packet)) = decoder
+        .next_packet()
+        .map_err(|error| anyhow!("{error}"))
+        .context("decoding the song")?
+    {
+        if let Ok(decoded) = packet.samples() {
+            samples.extend(decoded.iter().map(|&sample| sample as f32));
+        }
+    }
+    Ok(samples)
 }
 
 /// The file from `offset`, as the decoder should see it.
@@ -153,5 +159,27 @@ impl<T: Read + Seek + Send + Sync> MediaSource for Subfile<T> {
 
     fn byte_len(&self) -> Option<u64> {
         Some(self.length - self.offset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_past_spotifys_header_decodes_whole() {
+        // Spotify's Ogg files start with a header of their own; the file
+        // the decoder sees starts after it.
+        let tone = include_bytes!("testdata/tone.ogg");
+        let mut file = vec![0xa5; OGG_HEADER_END as usize];
+        file.extend_from_slice(tone);
+        let length = file.len() as u64;
+        let source = Subfile::new(io::Cursor::new(file), OGG_HEADER_END, length).unwrap();
+        let samples = decode(source, Some("audio/ogg")).unwrap();
+        // A second of stereo at 44.1 kHz, give or take the codec's edges.
+        let frames = samples.len() / 2;
+        assert!((43_000..=45_500).contains(&frames), "{frames} frames");
+        let loudest = samples.iter().fold(0.0f32, |a, s| a.max(s.abs()));
+        assert!(loudest > 0.05, "the tone is heard: {loudest}");
     }
 }
