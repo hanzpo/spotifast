@@ -81,5 +81,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameOrigin(.zero)
         window.orderFrontRegardless()
         self.window = window
+        // SWIFTSPOT_SNAPSHOT draws the window into a PNG at that path after
+        // a few seconds, and quits: it works with the screen locked, where
+        // a window capture can't, though without the window server's glass.
+        if let path = ProcessInfo.processInfo.environment["SWIFTSPOT_SNAPSHOT"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                if let view = window.contentView,
+                   let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: image)
+                    try? image.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+        }
     }
 }
