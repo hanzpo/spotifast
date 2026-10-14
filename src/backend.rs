@@ -3717,8 +3717,9 @@ async fn handle(
     // its HTTP client, so the engine's presence is the only liveness test;
     // a read the session truly cannot make falls back to the Web API below.
     if api.session_serves(operation)
-        && let Some(engine) = engine
-            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        && let Some(engine) = engine.filter(|engine| {
+            session_reads_for(&engine.session().username(), api.account().as_ref())
+        })
         && let Some(response) = over_session(engine, &request).await
     {
         log::debug!("Spotify route operation={operation:?} source=session");
@@ -3728,8 +3729,9 @@ async fn handle(
     // The account's playlists come over the session where it can: the Web
     // API lists them only from the shared app.
     if let ApiRequest::MyPlaylists { offset, generation } = &request
-        && let Some(engine) = engine
-            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        && let Some(engine) = engine.filter(|engine| {
+            session_reads_for(&engine.session().username(), api.account().as_ref())
+        })
     {
         let read = async {
             let uris = library_uris(engine).await?;
@@ -3759,8 +3761,9 @@ async fn handle(
     // its top songs below do: the Web API serves them only from the
     // shared app.
     if let ApiRequest::RelatedArtists { id } = &request
-        && let Some(engine) = engine
-            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        && let Some(engine) = engine.filter(|engine| {
+            session_reads_for(&engine.session().username(), api.account().as_ref())
+        })
     {
         match tokio::time::timeout(
             SESSION_READ_TIMEOUT,
@@ -3786,10 +3789,9 @@ async fn handle(
     // It answers for the session's account, so it needn't wait for the
     // shared app to say whose account the Web API's is, which a rate limit
     // can hold back at start-up; it only mustn't answer for another.
-    if let Some(engine) = engine.filter(|engine| {
-        api.account()
-            .is_none_or(|account| account.as_str() == engine.session().username())
-    }) && let Some(response) = pathfinder_answer(engine, &request).await
+    if let Some(engine) = engine
+        .filter(|engine| session_reads_for(&engine.session().username(), api.account().as_ref()))
+        && let Some(response) = pathfinder_answer(engine, &request).await
     {
         return (response, None);
     }
@@ -3827,8 +3829,9 @@ async fn handle(
     // API serves them only from the shared app, whose rate limit can hold
     // them back for minutes.
     if let ApiRequest::ArtistTopTracks { id } = &request
-        && let Some(engine) = engine
-            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        && let Some(engine) = engine.filter(|engine| {
+            session_reads_for(&engine.session().username(), api.account().as_ref())
+        })
     {
         match tokio::time::timeout(
             SESSION_READ_TIMEOUT,
@@ -4463,6 +4466,14 @@ mod playlist_search_cache {
 /// view of a playlist is not this one's.
 fn same_account(username: &str, account: Option<&AccountId>) -> bool {
     account.is_some_and(|account| account.as_str() == username)
+}
+
+/// Whether the session may read for the Web API's account. It reads only
+/// its own account's things, so it needn't wait for the shared app to say
+/// whose account the Web API's is, which a rate limit can hold back for
+/// minutes; it only mustn't read when that is another account.
+fn session_reads_for(username: &str, account: Option<&AccountId>) -> bool {
+    account.is_none_or(|account| account.as_str() == username)
 }
 
 /// How long a session read may take before the Web API is asked instead:
@@ -6650,6 +6661,16 @@ mod session_tests {
         assert!(same_account("alice", Some(&alice)));
         assert!(!same_account("bob", Some(&alice)));
         assert!(!same_account("alice", None), "nothing verified yet");
+    }
+
+    /// Reads go over the session before the Web API's account is known,
+    /// as a rate limit can keep it unknown, but never for another account.
+    #[test]
+    fn the_session_reads_before_the_account_is_verified() {
+        let alice = AccountId::new("alice");
+        assert!(session_reads_for("alice", None));
+        assert!(session_reads_for("alice", Some(&alice)));
+        assert!(!session_reads_for("bob", Some(&alice)));
     }
 
     /// A header read, a page of rows or a sample at the request's offset,
