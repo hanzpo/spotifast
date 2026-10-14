@@ -54,4 +54,5 @@ pub mod thumbbar;
 pub mod ui;
 pub mod util;
 pub mod window;
+pub mod words;
 pub mod zeroconf;

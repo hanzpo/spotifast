@@ -685,6 +685,20 @@ pub enum Command {
     Rootlist,
     /// Karaoke's vocal model, fetched if it is not on disk yet.
     KaraokeModel,
+    /// When each word of a song's synced lyrics is sung: each line's start
+    /// and its words.
+    Words {
+        uri: String,
+        lines: Vec<(u32, String)>,
+        /// Made ready ahead of the song, so it waits for the playing one.
+        ahead: bool,
+    },
+    /// A song's lyrics, and its words placed in it, ready before it plays.
+    /// Without a query only Spotify's own lyrics are looked for.
+    PrepareWords {
+        uri: String,
+        query: Option<crate::lyrics::Query>,
+    },
     /// One of the desktop app's pathfinder queries, answered as Spotify
     /// gives it.
     Pathfinder {
@@ -774,6 +788,12 @@ pub struct LyricsRequest {
 pub enum Event {
     /// Karaoke's vocal model is on disk, or could not be fetched.
     KaraokeModel(Result<std::path::PathBuf, String>),
+    /// A song's words placed in time, for the lyrics `key` names.
+    Words {
+        uri: String,
+        key: std::path::PathBuf,
+        result: Result<crate::words::Lines, String>,
+    },
     ProxyRestored {
         config: ProxyConfig,
         password: Option<crate::credentials::ProxyPassword>,
@@ -1387,6 +1407,9 @@ struct Worker {
     resume: Option<PlaybackResume>,
     /// A pickup in flight: the load to repeat and how often it was tried.
     resume_verify: Option<(PlaybackResume, u8)>,
+    /// Places lyrics' words in songs, once the first song asks.
+    #[cfg(target_os = "macos")]
+    words: Option<crate::words::Placer>,
 }
 
 impl Worker {
@@ -1446,6 +1469,8 @@ impl Worker {
             reconnects: Vec::new(),
             resume: None,
             resume_verify: None,
+            #[cfg(target_os = "macos")]
+            words: None,
         }
     }
 
@@ -1859,6 +1884,8 @@ impl Worker {
                 Command::Lyrics(request) => self.fetch_lyrics(*request),
                 Command::Rootlist => self.fetch_rootlist(),
                 Command::KaraokeModel => self.fetch_karaoke_model(),
+                Command::Words { uri, lines, ahead } => self.find_words(uri, lines, ahead),
+                Command::PrepareWords { uri, query } => self.prepare_words(uri, query),
                 Command::Pathfinder {
                     operation,
                     variables,
@@ -3236,6 +3263,120 @@ impl Worker {
                 "Karaoke needs a Mac with Apple silicon".into(),
             )));
             waker.wake();
+        }
+    }
+
+    /// Finds a song's lyrics as [`Self::fetch_lyrics`] does, keeping them
+    /// in the cache, then places their words when they are synced.
+    fn prepare_words(&self, uri: String, query: Option<crate::lyrics::Query>) {
+        let http = self.http.client();
+        let cache_dir = self.dirs.lyrics_cache_dir();
+        let engine = self.engine.clone();
+        let commands = self.commands.clone();
+        tokio::spawn(async move {
+            let found = match spotify_lyrics(engine, &uri, &cache_dir).await {
+                Some(found) => Some(found),
+                None => match (query, http) {
+                    (Some(query), Ok(http)) => crate::lyrics::fetch(&http, &cache_dir, &query)
+                        .await
+                        .ok()
+                        .flatten(),
+                    _ => None,
+                },
+            };
+            if let Some(lyrics) = found.filter(|lyrics| lyrics.synced) {
+                let lines = lyrics
+                    .lines
+                    .into_iter()
+                    .map(|line| (line.at_ms.unwrap_or_default(), line.text))
+                    .collect();
+                let _ = commands.send(Command::Words {
+                    uri,
+                    lines,
+                    ahead: true,
+                });
+            }
+        });
+    }
+
+    /// Places a song's words: from the cache when they were placed before,
+    /// otherwise by hearing the song, the letter model fetched first if
+    /// this is the first time.
+    fn find_words(&mut self, uri: String, lines: Vec<(u32, String)>, ahead: bool) {
+        let borrowed: Vec<(u32, &str)> = lines
+            .iter()
+            .map(|(at, text)| (*at, text.as_str()))
+            .collect();
+        let key = crate::words::cache_path(&self.dirs.lyrics_cache_dir(), &uri, &borrowed);
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        let tell = move |uri: String, key: std::path::PathBuf, result| {
+            let _ = events.send(Event::Words { uri, key, result });
+            waker.wake();
+        };
+        #[cfg(target_os = "macos")]
+        {
+            let placer = self
+                .words
+                .get_or_insert_with(crate::words::Placer::spawn)
+                .clone();
+            let engine = self.engine.clone();
+            let http = self.http.client();
+            let dir = self.dirs.words_dir();
+            let karaoke = self.dirs.karaoke_dir();
+            tokio::spawn(async move {
+                let cached = key.clone();
+                if let Ok(Some(found)) =
+                    tokio::task::spawn_blocking(move || crate::words::read_cache(&cached)).await
+                {
+                    tell(uri, key, Ok(found));
+                    return;
+                }
+                let opened = async {
+                    let engine = engine.ok_or("Spotify isn't connected")?;
+                    let http = http?;
+                    tokio::fs::create_dir_all(&dir)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    let aligner = crate::words::coreml::ALIGNER
+                        .fetch(&http, &dir)
+                        .await
+                        .map_err(|error| format!("fetching the letter model: {error:#}"))?;
+                    let track = crate::words::audio::open(engine.session(), &uri)
+                        .await
+                        .map_err(|error| format!("{error:#}"))?;
+                    Ok::<_, String>((aligner, track))
+                }
+                .await;
+                match opened {
+                    Ok((aligner, track)) => {
+                        let separator = crate::karaoke::model::installed(&karaoke)
+                            .then(|| crate::karaoke::model::package(&karaoke));
+                        let (done_uri, done_key) = (uri.clone(), key.clone());
+                        placer.place(crate::words::Job {
+                            track: Some(track),
+                            lines,
+                            ahead,
+                            aligner,
+                            separator,
+                            cache: key,
+                            done: Box::new(move |result| {
+                                tell(
+                                    done_uri,
+                                    done_key,
+                                    result.map_err(|error| format!("{error:#}")),
+                                );
+                            }),
+                        });
+                    }
+                    Err(error) => tell(uri, key, Err(error)),
+                }
+            });
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (lines, ahead);
+            tell(uri, key, Err("Word-by-word lyrics need a Mac".into()));
         }
     }
 

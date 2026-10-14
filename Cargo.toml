@@ -89,6 +89,11 @@ librespot-playback = { version = "0.8", default-features = false, features = ["r
 librespot-connect = { version = "0.8", default-features = false }
 librespot-metadata = { version = "0.8", default-features = false }
 librespot-protocol = { version = "0.8", default-features = false }
+# Word-by-word lyrics decode a whole song ahead of playback, reading its
+# file as the player does: librespot's own fetching and decryption, and the
+# Symphonia types its decoder takes. Both are already in the tree.
+librespot-audio = { version = "0.8", default-features = false }
+symphonia = { version = "0.5", default-features = false }
 # Parses the rootlist's playlist4 protobuf, the same crate librespot generates with.
 protobuf = "3"
 # Local playback's audio sink is this crate's own (src/sink.rs): librespot's

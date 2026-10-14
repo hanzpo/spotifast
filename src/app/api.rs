@@ -34,6 +34,7 @@ pub(super) struct Pushed {
     library: u64,
     auth: u64,
     queue: u64,
+    lyrics: u64,
     toast: Option<std::time::Instant>,
     /// When a client last carried the playlists on past a failed page:
     /// clients ask every moment while a list is loading, and each retry
@@ -453,6 +454,18 @@ impl App {
             self.api_pushed.queue = queue;
         }
 
+        // Words placed in the playing song are news to a lyrics view.
+        let lyrics = fingerprint((
+            self.lyrics_uri.clone(),
+            self.lyric_words.as_ref().map(|words| words.uri.clone()),
+        ));
+        if lyrics != self.api_pushed.lyrics {
+            if self.api_pushed.lyrics != 0 {
+                server.broadcast("lyrics", Value::Null);
+            }
+            self.api_pushed.lyrics = lyrics;
+        }
+
         let since = self.api_pushed.toast;
         for toast in &self.toasts {
             if since.is_none_or(|since| toast.created > since) {
@@ -774,7 +787,17 @@ impl App {
                 if playing.is_some() && self.lyrics_uri != playing {
                     self.request_lyrics();
                 }
+                self.prepare_next_words();
                 Ok(self.api_lyrics())
+            }
+            // Gets a song's words ready, as the song after the playing one
+            // is while lyrics are shown.
+            "words.prepare" => {
+                self.backend.send(crate::backend::Command::PrepareWords {
+                    uri: param_str(params, "uri")?.to_string(),
+                    query: None,
+                });
+                ok()
             }
             "karaoke.set" => {
                 if let Some(on) = params.get("on").and_then(Value::as_bool) {
@@ -1335,12 +1358,19 @@ impl App {
         })
     }
 
-    fn api_lyrics(&self) -> Value {
+    pub(super) fn api_lyrics(&self) -> Value {
         let (loading, error, lyrics) = match &self.lyrics {
             Loadable::Loaded(lyrics) => (false, None, lyrics.as_ref()),
             Loadable::Failed(error) => (false, Some(error.clone()), None),
             Loadable::Loading | Loadable::NotLoaded => (self.now_playing().is_some(), None, None),
         };
+        // Each line's words and when each letter of them is sung, once
+        // they have been placed in this song.
+        let words = self
+            .lyric_words
+            .as_ref()
+            .filter(|words| Some(&words.uri) == self.lyrics_uri.as_ref())
+            .filter(|words| lyrics.is_some_and(|lyrics| lyrics.lines.len() == words.lines.len()));
         json!({
             "uri": self.lyrics_uri,
             "loading": loading,
@@ -1352,7 +1382,14 @@ impl App {
                     lyrics
                         .lines
                         .iter()
-                        .map(|line| json!({ "time_ms": line.at_ms, "text": line.text }))
+                        .enumerate()
+                        .map(|(index, line)| {
+                            json!({
+                                "time_ms": line.at_ms,
+                                "text": line.text,
+                                "words": words.and_then(|words| words.lines[index].as_ref()),
+                            })
+                        })
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default(),

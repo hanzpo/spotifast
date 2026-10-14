@@ -132,8 +132,11 @@ current-track pickup.
   fixed revision of
   [gyoom/UVR-MDX-CoreML](https://huggingface.co/gyoom/UVR-MDX-CoreML) on
   Hugging Face and checks it against digests built into the app; nothing
-  about you or what you play is sent. It does not check for or download
-  updates.
+  about you or what you play is sent. The first time synced lyrics are shown,
+  on a Mac, it downloads the letter model for word-by-word lyrics (189 MB)
+  from a fixed revision of
+  [FinDIT-Studio/alignkit-coreml](https://huggingface.co/FinDIT-Studio/alignkit-coreml)
+  the same way. It does not check for or download updates.
 
 ## Karaoke
 
@@ -147,6 +150,20 @@ holds, and a gapless change of track is shown once the new track is heard.
 A seek or skip discards what it holds; a pause keeps it, and the end of the
 music plays it out. A model that falls behind or fails leaves the music as
 it is rather than hold it up.
+
+## Word-by-word lyrics
+
+Spotify's lyrics time each line. While lyrics are shown on a Mac, the engine
+also places each word, and each letter, in the song: it reads the song's
+file as the player does (from the audio cache when it is there), decodes it
+whole, takes the voice out with karaoke's model when that is on disk, and
+runs wav2vec2-base-960h through Core ML on the CPU, which hears the voice as
+letters fifty times a second. A forced alignment then finds the best path
+through those letters that spells the lyrics in order, each line's letters
+kept within a second of the line's own time (`src/words/align.rs`). A song
+of four minutes takes about ten seconds; the result is kept in the lyrics
+cache, and the song after the playing one is prepared ahead. Lines the model
+cannot spell, such as another script, keep the line timing.
 
 ## Collection loading and artwork
 

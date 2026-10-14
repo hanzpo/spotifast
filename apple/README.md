@@ -24,7 +24,8 @@ One JSON object per line over the Unix socket (`src/server.rs`). A client
 sends `{"id": 1, "method": "…", "params": {…}}` and gets back
 `{"id": 1, "result": …}` or `{"id": 1, "error": "…"}`. The server also
 pushes `{"event": "player", "data": …}` whenever playback changes, apart
-from the position simply moving on.
+from the position simply moving on, and `lyrics` when the playing song's
+words have been placed in time.
 
 | Method | Params | Answers |
 | --- | --- | --- |
@@ -38,6 +39,8 @@ from the position simply moving on.
 | `player.like` | `uri`? (the playing song by default) | |
 | `player.play` | `context`? `uri`? `index`? | |
 | `karaoke.set` | `on`? `level`? (voice kept, 0 to 1) | |
+| `lyrics.get` | | `uri`, `synced`, `lines`: `time_ms`, `text`, `words`? |
+| `words.prepare` | `uri` | |
 | `queue.add` | `uri`, `name`? | |
 | `library.playlists` | | `playlists`, `liked_context` |
 | `library.liked` | | `tracks`, `total`, `more`, `context` |
@@ -48,6 +51,9 @@ from the position simply moving on.
 
 The player carries `karaoke`: `available`, `on`, `level`, and `status`
 (`off`, `downloading`, `preparing`, `running` or `failed`, with `error`).
+
+A line's `words`, once placed, are its words with `marks`: when each
+character starts, in milliseconds, and when the word ends.
 
 Lists SwiftSpot is still fetching answer with `"loading": true`; ask again.
 The handlers are in `src/app/api.rs`: each reads SwiftSpot's state or queues

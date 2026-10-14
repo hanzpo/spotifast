@@ -236,6 +236,12 @@ struct Listening {
     recorded: bool,
 }
 
+/// A song's lyrics' words, placed in time.
+pub struct LyricWords {
+    pub uri: String,
+    pub lines: crate::words::Lines,
+}
+
 pub struct App {
     pub dirs: AppDirs,
     pub settings: Settings,
@@ -443,6 +449,10 @@ pub struct App {
     pub lyrics_uri: Option<String>,
     /// `Loaded(None)` when no lyrics are available.
     pub lyrics: Loadable<Option<crate::lyrics::Lyrics>>,
+    /// The playing song's words, placed in time, once they have been.
+    pub lyric_words: Option<LyricWords>,
+    /// The song after the playing one whose words were last made ready.
+    words_prepared: Option<String>,
     /// Whether the panel follows the current line. Manual scrolling disables
     /// it until Follow is used or the track changes.
     pub lyrics_following: bool,
@@ -899,6 +909,8 @@ impl App {
             softened_covers: Default::default(),
             lyrics_uri: None,
             lyrics: Loadable::NotLoaded,
+            lyric_words: None,
+            words_prepared: None,
             lyrics_following: true,
             lyrics_line_shown: None,
             show_devices: false,
@@ -1997,8 +2009,16 @@ impl App {
                             Ok(found) => Loadable::Loaded(found),
                             Err(error) => Loadable::Failed(error),
                         };
+                        self.request_words();
                     }
                 }
+                Event::Words { uri, key, result } => match result {
+                    Ok(lines) if self.words_key().is_some_and(|wanted| wanted == key) => {
+                        self.lyric_words = Some(LyricWords { uri, lines });
+                    }
+                    Ok(_) => {}
+                    Err(error) => log::info!("words: {uri} not placed: {error}"),
+                },
                 Event::PlaylistCache {
                     account_id,
                     id,
@@ -2720,6 +2740,87 @@ impl App {
 
     /// Asks for the playing track's lyrics unless they are here or on the
     /// way. Podcasts have no lyrics to ask for.
+    /// The cache key of the words the shown lyrics need, when they are
+    /// synced and could have words.
+    fn words_key(&self) -> Option<std::path::PathBuf> {
+        let Loadable::Loaded(Some(lyrics)) = &self.lyrics else {
+            return None;
+        };
+        let uri = self.lyrics_uri.as_deref()?;
+        if !lyrics.synced || !uri.starts_with("spotify:track:") {
+            return None;
+        }
+        let lines: Vec<(u32, &str)> = lyrics
+            .lines
+            .iter()
+            .map(|line| (line.at_ms.unwrap_or_default(), line.text.as_str()))
+            .collect();
+        Some(crate::words::cache_path(
+            &self.dirs.lyrics_cache_dir(),
+            uri,
+            &lines,
+        ))
+    }
+
+    /// Asks for the shown lyrics' words to be placed in the song.
+    fn request_words(&mut self) {
+        if self.offline || self.words_key().is_none() {
+            return;
+        }
+        let (Some(uri), Loadable::Loaded(Some(lyrics))) = (&self.lyrics_uri, &self.lyrics) else {
+            return;
+        };
+        if self
+            .lyric_words
+            .as_ref()
+            .is_some_and(|words| &words.uri == uri)
+        {
+            return;
+        }
+        self.backend.send(Command::Words {
+            uri: uri.clone(),
+            lines: lyrics
+                .lines
+                .iter()
+                .map(|line| (line.at_ms.unwrap_or_default(), line.text.clone()))
+                .collect(),
+            ahead: false,
+        });
+    }
+
+    /// While lyrics are shown, the next song's words are placed ahead of
+    /// it, so they light up from its first line.
+    pub fn prepare_next_words(&mut self) {
+        if self.offline {
+            return;
+        }
+        let Some(crate::api::models::PlayableItem::Track(next)) = self
+            .queue
+            .get()
+            .and_then(|queue| queue.queue.first())
+            .cloned()
+        else {
+            return;
+        };
+        if self.words_prepared.as_deref() == Some(next.uri.as_str()) {
+            return;
+        }
+        self.words_prepared = Some(next.uri.clone());
+        self.backend.send(Command::PrepareWords {
+            uri: next.uri.clone(),
+            query: Some(crate::lyrics::Query {
+                artist: next
+                    .artists
+                    .first()
+                    .map(|artist| artist.name.clone())
+                    .unwrap_or_default(),
+                title: next.name,
+                album: next.album.map(|album| album.name).unwrap_or_default(),
+                duration_ms: next.duration_ms,
+            }),
+        });
+    }
+
     pub fn request_lyrics(&mut self) {
         let Some(now) = self.now_playing() else {
             return;
@@ -22987,6 +23088,44 @@ mod tests {
             assert_eq!(shown, expected, "after page {page}");
         }
         assert_eq!(app.library.liked.items.len(), 299);
+        app.backend.shutdown();
+    }
+
+    #[test]
+    fn placed_words_join_the_lyrics_they_were_placed_for() {
+        let mut app = headless_app();
+        app.backend.set_offline(true);
+        let uri = "spotify:track:abc".to_string();
+        app.lyrics_uri = Some(uri.clone());
+        app.lyrics = Loadable::Loaded(Some(crate::lyrics::Lyrics {
+            lines: vec![crate::lyrics::Line {
+                at_ms: Some(1000),
+                text: "hi there".into(),
+            }],
+            synced: true,
+            instrumental: false,
+        }));
+        let words = vec![Some(vec![crate::words::Word {
+            text: "hi".into(),
+            marks: vec![1000, 1100, 1300],
+        }])];
+        // Words placed for other lyrics of the song are not these.
+        app.handle_backend_events(vec![Event::Words {
+            uri: uri.clone(),
+            key: std::path::PathBuf::from("/elsewhere/words-abc-0.json"),
+            result: Ok(words.clone()),
+        }]);
+        assert!(app.lyric_words.is_none());
+        app.handle_backend_events(vec![Event::Words {
+            uri: uri.clone(),
+            key: app.words_key().unwrap(),
+            result: Ok(words),
+        }]);
+        let lyrics = app.api_lyrics();
+        assert_eq!(lyrics["lines"][0]["words"][0]["marks"][2], 1300);
+        // Another song's lyrics don't take this one's words.
+        app.lyrics_uri = Some("spotify:track:other".into());
+        assert!(app.api_lyrics()["lines"][0]["words"].is_null());
         app.backend.shutdown();
     }
 

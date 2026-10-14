@@ -651,6 +651,44 @@ fn sample_lyrics() -> crate::lyrics::Lyrics {
     }
 }
 
+/// The sample lyrics' words placed as if sung evenly through most of each
+/// line's time, letter by letter.
+#[cfg(feature = "demo")]
+fn sample_words(lyrics: &crate::lyrics::Lyrics) -> crate::words::Lines {
+    lyrics
+        .lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| {
+            let start = line.at_ms?;
+            let next = lyrics
+                .lines
+                .get(index + 1)
+                .and_then(|line| line.at_ms)
+                .unwrap_or(start + 6_500);
+            let sung = (next - start) * 85 / 100;
+            let letters = line.text.chars().count() as u32;
+            let mut before = 0;
+            Some(
+                line.text
+                    .split(' ')
+                    .map(|word| {
+                        let count = word.chars().count() as u32;
+                        let marks = (0..=count)
+                            .map(|i| start + sung * (before + i) / letters)
+                            .collect();
+                        before += count + 1;
+                        crate::words::Word {
+                            text: word.to_string(),
+                            marks,
+                        }
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
 /// Applies `--demo-page` and `--demo-show`.
 /// Makes the displayed song this computer's playback, with that song's own
 /// metadata, so the player bar draws the same as without it.
@@ -785,6 +823,12 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     _ => {
                         let mut lyrics = sample_lyrics();
                         lyrics.instrumental = surface == "lyrics-instrumental";
+                        if let Some(uri) = app.lyrics_uri.clone() {
+                            app.lyric_words = Some(crate::app::LyricWords {
+                                uri,
+                                lines: sample_words(&lyrics),
+                            });
+                        }
                         Loadable::Loaded(Some(lyrics))
                     }
                 };

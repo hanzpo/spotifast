@@ -100,6 +100,11 @@ impl AppDirs {
         self.cache.join("karaoke")
     }
 
+    /// The letter model word-by-word lyrics hear songs with.
+    pub fn words_dir(&self) -> PathBuf {
+        self.cache.join("words")
+    }
+
     pub fn art_cache_dir(&self) -> PathBuf {
         self.cache.join("art")
     }
