@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- SwiftSpot: a spot moving fast, filling from its left the way a sung
+       letter fills in the lyrics. -->
+  <defs>
+    <linearGradient id="sky" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FF9A3D"/>
+      <stop offset="0.48" stop-color="#FF3F6C"/>
+      <stop offset="1" stop-color="#6A2BE8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.15" r="0.85">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The fill's soft front edge. -->
+    <linearGradient id="sung" x1="398" y1="0" x2="822" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#FFFFFF"/>
+      <stop offset="0.7" stop-color="#FFFFFF" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <!-- The body, on the macOS icon grid. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sky)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <!-- Trails, tapering away behind the spot. -->
+  <g fill="url(#trail)">
+    <path d="M196 404 L352 388 A16 16 0 0 1 352 420 Z" opacity="0.75"/>
+    <path d="M160 512 L340 490 A22 22 0 0 1 340 534 Z"/>
+    <path d="M216 620 L352 604 A16 16 0 0 1 352 636 Z" opacity="0.75"/>
+  </g>
+  <!-- The spot. -->
+  <g>
+    <circle cx="610" cy="512" r="212" fill="url(#sung)"/>
+    <circle cx="610" cy="512" r="200" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="24"/>
+  </g>
+</svg>

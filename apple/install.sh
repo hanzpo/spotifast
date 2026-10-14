@@ -11,9 +11,9 @@
 # keychain already trusts for saved sign-ins, rocks.spotifast.Spotifast,
 # and the same signing identity, so they open without a prompt.
 #
-# The icon comes from the Spotify app installed on this Mac when there is
-# one, read at install time so it never enters the repository; set ICON to
-# another .icns file, or to an empty string for none. Set APP_DIR to
+# The icon is SwiftSpot's own, Packaging/AppIcon.svg, rendered to
+# Packaging/AppIcon-1024.png by Packaging/render-icon.swift; set ICON to
+# another .icns file to use that instead. Set APP_DIR to
 # install somewhere other than /Applications. The bundle is signed with
 # this Mac's Apple Development certificate when it has one, or
 # CODESIGN_IDENTITY when set ("-" signs ad hoc). A running SwiftSpot is quit
@@ -33,9 +33,16 @@ if [ -z "${CODESIGN_IDENTITY:-}" ]; then
 fi
 identity="${CODESIGN_IDENTITY:--}"
 
-spotify_icon=/Applications/Spotify.app/Contents/Resources/AppIcon.icns
-if [ -z "${ICON+set}" ] && [ -f "$spotify_icon" ]; then
-    ICON=$spotify_icon
+if [ -z "${ICON:-}" ]; then
+    iconset="$(mktemp -d)/AppIcon.iconset"
+    mkdir -p "$iconset"
+    for size in 16 32 128 256 512; do
+        double=$((size * 2))
+        sips -z $size $size "$here/Packaging/AppIcon-1024.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+        sips -z $double $double "$here/Packaging/AppIcon-1024.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+    done
+    ICON="${iconset%.iconset}.icns"
+    iconutil -c icns "$iconset" -o "$ICON"
 fi
 
 # The engine: the Rust app, bundled as packaging/macos/bundle.sh bundles
@@ -44,9 +51,7 @@ fi
 engine="$here/.build/SwiftSpot Engine.app"
 "$root/packaging/macos/bundle.sh" "$root/target/release/spotifast" "$engine" "$version" >/dev/null
 /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$engine/Contents/Info.plist"
-if [ -n "${ICON:-}" ]; then
-    cp "$ICON" "$engine/Contents/Resources/spotifast.icns"
-fi
+cp "$ICON" "$engine/Contents/Resources/spotifast.icns"
 codesign --force --sign "$identity" "$engine"
 
 # The front end around it.
@@ -56,9 +61,7 @@ rm -rf "$bundle"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$bundle/Contents/Helpers"
 cp "$(cd "$here" && swift build -c release --show-bin-path)/SwiftSpot" "$bundle/Contents/MacOS/SwiftSpot"
 sed "s/__VERSION__/$version/g" "$here/Packaging/Info.plist" > "$bundle/Contents/Info.plist"
-if [ -n "${ICON:-}" ]; then
-    cp "$ICON" "$bundle/Contents/Resources/AppIcon.icns"
-fi
+cp "$ICON" "$bundle/Contents/Resources/AppIcon.icns"
 mv "$engine" "$bundle/Contents/Helpers/"
 codesign --force --sign "$identity" "$bundle"
 codesign --verify --deep --strict "$bundle"
