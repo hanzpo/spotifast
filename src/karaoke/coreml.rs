@@ -25,7 +25,7 @@ use super::{FRAMES, Mdx, Model, Separator};
 const BINS: usize = 3072;
 
 /// The model's package, and where its compiled form is kept.
-fn compiled_path(package: &Path) -> PathBuf {
+pub(crate) fn compiled_path(package: &Path) -> PathBuf {
     package.with_extension("mlmodelc")
 }
 
@@ -46,49 +46,52 @@ struct CoreMl {
 // a time; this one stays on the karaoke thread that made it.
 unsafe impl Send for CoreMl {}
 
-fn url(path: &Path) -> Result<Retained<NSURL>> {
+pub(crate) fn url(path: &Path) -> Result<Retained<NSURL>> {
     let text = path
         .to_str()
         .ok_or_else(|| anyhow!("{} is not UTF-8", path.display()))?;
     Ok(NSURL::fileURLWithPath(&NSString::from_str(text)))
 }
 
-fn error(error: &objc2_foundation::NSError) -> anyhow::Error {
+pub(crate) fn error(error: &objc2_foundation::NSError) -> anyhow::Error {
     anyhow!("{}", error.localizedDescription())
+}
+
+/// Loads the Core ML package at `package` to run on `units`, compiling it
+/// for this Mac the first time and keeping the compiled copy beside it.
+pub(crate) fn model(package: &Path, units: MLComputeUnits) -> Result<Retained<MLModel>> {
+    let compiled = compiled_path(package);
+    if !compiled.is_dir() {
+        compile(package, &compiled)?;
+    }
+    let configuration = unsafe { MLModelConfiguration::new() };
+    unsafe { configuration.setComputeUnits(units) };
+    let model = unsafe {
+        MLModel::modelWithContentsOfURL_configuration_error(&*url(&compiled)?, &configuration)
+    };
+    Ok(match model {
+        Ok(model) => model,
+        Err(failure) => {
+            // A compiled copy from another system version can refuse to
+            // load; compiling again fixes that.
+            log::warn!("compiling {} again: {}", package.display(), error(&failure));
+            std::fs::remove_dir_all(&compiled).ok();
+            compile(package, &compiled)?;
+            unsafe {
+                MLModel::modelWithContentsOfURL_configuration_error(
+                    &*url(&compiled)?,
+                    &configuration,
+                )
+            }
+            .map_err(|failure| error(&failure))
+            .with_context(|| format!("loading {}", package.display()))?
+        }
+    })
 }
 
 impl CoreMl {
     fn load(package: &Path) -> Result<Self> {
-        let compiled = compiled_path(package);
-        if !compiled.is_dir() {
-            compile(package, &compiled)?;
-        }
-        let configuration = unsafe { MLModelConfiguration::new() };
-        unsafe { configuration.setComputeUnits(MLComputeUnits::CPUAndNeuralEngine) };
-        let model = unsafe {
-            MLModel::modelWithContentsOfURL_configuration_error(&*url(&compiled)?, &configuration)
-        };
-        let model = match model {
-            Ok(model) => model,
-            Err(failure) => {
-                // A compiled copy from another system version can refuse to
-                // load; compiling again fixes that.
-                log::warn!(
-                    "karaoke: compiling the vocal model again: {}",
-                    error(&failure)
-                );
-                std::fs::remove_dir_all(&compiled).ok();
-                compile(package, &compiled)?;
-                unsafe {
-                    MLModel::modelWithContentsOfURL_configuration_error(
-                        &*url(&compiled)?,
-                        &configuration,
-                    )
-                }
-                .map_err(|failure| error(&failure))
-                .context("loading the vocal model")?
-            }
-        };
+        let model = model(package, MLComputeUnits::CPUAndNeuralEngine)?;
         let shape = NSArray::from_retained_slice(&[
             NSNumber::new_usize(1),
             NSNumber::new_usize(4),
@@ -112,7 +115,7 @@ impl CoreMl {
     }
 }
 
-fn compile(package: &Path, compiled: &Path) -> Result<()> {
+pub(crate) fn compile(package: &Path, compiled: &Path) -> Result<()> {
     #[allow(deprecated)] // The asynchronous form only adds a block to wait on.
     let made = unsafe { MLModel::compileModelAtURL_error(&*url(package)?) }
         .map_err(|failure| error(&failure))
@@ -192,7 +195,7 @@ impl CoreMl {
     }
 }
 
-fn strides_of(strides: &NSArray<NSNumber>) -> Vec<usize> {
+pub(crate) fn strides_of(strides: &NSArray<NSNumber>) -> Vec<usize> {
     strides.iter().map(|n| n.as_usize()).collect()
 }
 
