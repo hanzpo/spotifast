@@ -174,7 +174,7 @@ struct SongList: View {
 }
 
 private enum Widths {
-    static let number: CGFloat = 34
+    static let number: CGFloat = 40
     static let time: CGFloat = 52
     static let added: CGFloat = 110
     static let addedBy: CGFloat = 110
@@ -387,8 +387,11 @@ struct SongRow: View {
             Image(systemName: paused ? "speaker.fill" : "speaker.wave.2.fill")
                 .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
         } else {
-            Text("\(columns == .albumTracks ? track.trackNumber ?? track.position + 1 : track.position + 1)")
+            // As Music numbers rows: no thousands separator, on one line.
+            Text(verbatim: String(columns == .albumTracks ? track.trackNumber ?? track.position + 1 : track.position + 1))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .foregroundStyle(secondary)
         }
     }
