@@ -7,9 +7,9 @@
 # The app is one bundle: the SwiftUI front end, and in
 # Contents/Helpers/SwiftSpot Engine.app the engine, which keeps the Spotify
 # session and plays the audio. The front end starts the engine out of
-# sight and the engine quits with it. The engine keeps the identifier the
-# keychain already trusts for saved sign-ins, rocks.spotifast.Spotifast,
-# and the same signing identity, so they open without a prompt.
+# sight and the engine quits with it. The app is com.hanzpo.swiftspot and
+# the engine com.hanzpo.swiftspot.engine; the engine keeps the saved
+# sign-ins in the keychain under the first.
 #
 # The icon is SwiftSpot's own, Packaging/AppIcon.svg, rendered to
 # Packaging/AppIcon-1024.png by Packaging/render-icon.swift; set ICON to

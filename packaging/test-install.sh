@@ -30,8 +30,8 @@ docker run --rm \
     set -- /packages/*."$FORMAT"
     test "$#" -eq 1
     test -f "$1"
-    mkdir -p /root/.config/spotifast
-    printf "%s\n" "preserve-existing-settings" > /root/.config/spotifast/settings-fixture
+    mkdir -p /root/.config/swiftspot
+    printf "%s\n" "preserve-existing-settings" > /root/.config/swiftspot/settings-fixture
     if [ "$FORMAT" = deb ]; then
       apt-get update
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$1"
@@ -62,7 +62,7 @@ docker run --rm \
     grep -qx "StartupWMClass=spotifast" /usr/share/applications/spotifast.desktop
     test -s /usr/share/spotifast/omarchy/spotifast.json.tpl
     test -x /usr/share/spotifast/omarchy/spotifast-theme
-    test "$(cat /root/.config/spotifast/settings-fixture)" = preserve-existing-settings
+    test "$(cat /root/.config/swiftspot/settings-fixture)" = preserve-existing-settings
     if [ "$FORMAT" = deb ]; then
       apt-get remove -y spotifast
     else
@@ -73,5 +73,5 @@ docker run --rm \
     test ! -e /usr/share/icons/hicolor/scalable/apps/spotifast.svg
     test ! -e /usr/share/spotifast/omarchy/spotifast.json.tpl
     test ! -e /usr/share/spotifast/omarchy/spotifast-theme
-    test "$(cat /root/.config/spotifast/settings-fixture)" = preserve-existing-settings
+    test "$(cat /root/.config/swiftspot/settings-fixture)" = preserve-existing-settings
   '

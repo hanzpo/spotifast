@@ -12,24 +12,24 @@ Spotifast follows each platform's conventions. On Linux:
 
 | What | Where | Safe to delete? |
 | --- | --- | --- |
-| Settings | `~/.config/spotifast/settings.json` | Yes, you lose preferences |
+| Settings | `~/.config/swiftspot/settings.json` | Yes, you lose preferences |
 | Spotify grants (available since 0.8.0) | System credential store | Use Sign out in Settings |
-| Credential revocation markers (available since 0.8.0) | `~/.local/state/spotifast/credential-storage/` | Keep after a failed sign-out deletion |
-| Legacy shared Web API grant | `~/.local/state/spotifast/shared_web_api_token.json` | Removed after migration or sign-out |
-| Legacy personal Web API grant | `~/.local/state/spotifast/personal_web_api_token.json` | Removed after migration or sign-out |
-| Legacy playback credential | `~/.local/state/spotifast/credentials/` | Removed after migration or sign-out |
+| Credential revocation markers (available since 0.8.0) | `~/.local/state/swiftspot/credential-storage/` | Keep after a failed sign-out deletion |
+| Legacy shared Web API grant | `~/.local/state/swiftspot/shared_web_api_token.json` | Removed after migration or sign-out |
+| Legacy personal Web API grant | `~/.local/state/swiftspot/personal_web_api_token.json` | Removed after migration or sign-out |
+| Legacy playback credential | `~/.local/state/swiftspot/credentials/` | Removed after migration or sign-out |
 | Proxy password | System credential store | Clear the password and apply the manual proxy settings |
-| Legacy proxy password | `~/.local/state/spotifast/proxy_password` | Removed after protected migration |
-| Last session | `~/.local/state/spotifast/session.json` | Yes |
-| Play history | `~/.local/state/spotifast/history.json` | Yes |
-| Audio cache | `~/.cache/spotifast/audio/` | Always |
-| Artwork cache | `~/.cache/spotifast/art/` | Always |
-| Lyrics cache | `~/.cache/spotifast/lyrics/` | Always |
-| Karaoke's vocal model (macOS) | `~/Library/Caches/me.paolino.spotifast/karaoke/` | Always; downloaded again when karaoke is next turned on |
-| Account-scoped playlist page cache | `~/.cache/spotifast/playlists/<account-id>/` | Always |
-| Account-scoped Home shelves and library rows | `~/.cache/spotifast/home/` | Always |
-| Last run's log | `~/.local/state/spotifast/spotifast.log` | Always |
-| Crash log | `~/.local/state/spotifast/panic.log` | Always |
+| Legacy proxy password | `~/.local/state/swiftspot/proxy_password` | Removed after protected migration |
+| Last session | `~/.local/state/swiftspot/session.json` | Yes |
+| Play history | `~/.local/state/swiftspot/history.json` | Yes |
+| Audio cache | `~/.cache/swiftspot/audio/` | Always |
+| Artwork cache | `~/.cache/swiftspot/art/` | Always |
+| Lyrics cache | `~/.cache/swiftspot/lyrics/` | Always |
+| Karaoke's vocal model (macOS) | `~/Library/Caches/com.hanzpo.swiftspot/karaoke/` | Always; downloaded again when karaoke is next turned on |
+| Account-scoped playlist page cache | `~/.cache/swiftspot/playlists/<account-id>/` | Always |
+| Account-scoped Home shelves and library rows | `~/.cache/swiftspot/home/` | Always |
+| Last run's log | `~/.local/state/swiftspot/spotifast.log` | Always |
+| Crash log | `~/.local/state/swiftspot/panic.log` | Always |
 
 Clearing caches never signs you out. Sign-out from Settings covers the shared
 and personal Web API grants and the independent playback credential.
@@ -195,16 +195,16 @@ automatic requests and shows a Retry button in the reserved row space.
 Since 0.8.0, Flatpak also preserves the fallback
 state directory used when `XDG_STATE_HOME` is unset. Session state, history,
 logs, and credential revocation markers survive a full quit and relaunch under
-`~/.var/app/rocks.spotifast.Spotifast/.local/state/spotifast/`. Configuration
+`~/.var/app/rocks.spotifast.Spotifast/.local/state/swiftspot/`. Configuration
 and caches remain under the app's `config/` and `cache/` directories. State
 already lost on quitting an older release cannot be recovered.
 
 On macOS, settings, state, and the logs are in
-`~/Library/Application Support/me.paolino.spotifast` and the caches in
-`~/Library/Caches/me.paolino.spotifast`. On Windows, settings are in
-`%APPDATA%\paolino\spotifast\config`, state and the logs in
-`%LOCALAPPDATA%\paolino\spotifast\data`, and the caches in
-`%LOCALAPPDATA%\paolino\spotifast\cache`.
+`~/Library/Application Support/com.hanzpo.swiftspot` and the caches in
+`~/Library/Caches/com.hanzpo.swiftspot`. On Windows, settings are in
+`%APPDATA%\hanzpo\swiftspot\config`, state and the logs in
+`%LOCALAPPDATA%\hanzpo\swiftspot\data`, and the caches in
+`%LOCALAPPDATA%\hanzpo\swiftspot\cache`.
 
 The running copy keeps its single-instance files in a private directory:
 `$XDG_RUNTIME_DIR/spotifast` on Linux (inside Flatpak, the app's own runtime

@@ -15,7 +15,7 @@ cask "spotifast" do
   app "Spotifast.app"
 
   zap trash: [
-    "~/Library/Application Support/me.paolino.spotifast",
-    "~/Library/Caches/me.paolino.spotifast",
+    "~/Library/Application Support/com.hanzpo.swiftspot",
+    "~/Library/Caches/com.hanzpo.swiftspot",
   ]
 end

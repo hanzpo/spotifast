@@ -9,7 +9,7 @@ library, and this app drives it over SwiftSpot's local API.
 1. Start SwiftSpot as usual (the installed app, or `cargo run`).
 2. `cd apple && swift run`
 
-It connects to `~/Library/Application Support/me.paolino.spotifast/api.sock`.
+It connects to `~/Library/Application Support/com.hanzpo.swiftspot/api.sock`.
 To try it without an account, run the demo and point the app at the demo's
 socket:
 

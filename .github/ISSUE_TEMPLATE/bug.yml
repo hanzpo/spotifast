@@ -7,9 +7,9 @@ body:
       value: |
         Please include the log from Spotifast's last run:
 
-        - Linux: `~/.local/state/spotifast/spotifast.log`
-        - macOS: `~/Library/Application\ Support/me.paolino.spotifast/spotifast.log`
-        - Windows: `%LOCALAPPDATA%\paolino\spotifast\data\spotifast.log`
+        - Linux: `~/.local/state/swiftspot/spotifast.log`
+        - macOS: `~/Library/Application\ Support/com.hanzpo.swiftspot/spotifast.log`
+        - Windows: `%LOCALAPPDATA%\hanzpo\swiftspot\data\spotifast.log`
 
         If the app crashed or vanished, include `panic.log` from the same folder.
   - type: input

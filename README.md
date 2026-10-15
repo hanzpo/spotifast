@@ -73,7 +73,7 @@ and that app is often rate-limited. To use one of your own:
    [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard),
    with the redirect URI `http://127.0.0.1:8989/login` and the Web API.
 2. Put its client ID in
-   `~/Library/Application Support/me.paolino.spotifast/settings.json` as
+   `~/Library/Application Support/com.hanzpo.swiftspot/settings.json` as
    `"web_client_id": "…"`, then restart SwiftSpot.
 
 ## Karaoke

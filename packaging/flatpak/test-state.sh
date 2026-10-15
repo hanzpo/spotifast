@@ -18,11 +18,11 @@ build=(flatpak build --runtime --with-appdir --nofilesystem=host --nofilesystem=
 
 # Simulate older Flatpak's unset XDG_STATE_HOME inside each process. Current
 # Flatpak supplies the variable even when build receives --unset-env.
-write_marker='unset XDG_STATE_HOME; mkdir -p "$HOME/.local/state/spotifast"; printf "%s\n" state-probe > "$HOME/.local/state/spotifast/probe"'
-read_marker='unset XDG_STATE_HOME; test "$(cat "$HOME/.local/state/spotifast/probe")" = state-probe'
+write_marker='unset XDG_STATE_HOME; mkdir -p "$HOME/.local/state/swiftspot"; printf "%s\n" state-probe > "$HOME/.local/state/swiftspot/probe"'
+read_marker='unset XDG_STATE_HOME; test "$(cat "$HOME/.local/state/swiftspot/probe")" = state-probe'
 
 "${build[@]}" "$probe_dir/build" sh -ec "$write_marker"
-"${build[@]}" "$probe_dir/build" sh -ec 'test ! -e "$HOME/.local/state/spotifast/probe"'
+"${build[@]}" "$probe_dir/build" sh -ec 'test ! -e "$HOME/.local/state/swiftspot/probe"'
 echo 'PASS: without persistence, fallback state is lost on exit'
 
 for manifest in "$here/rocks.spotifast.Spotifast.yml" "$here/rocks.spotifast.Spotifast.bundle.yml"; do
@@ -31,7 +31,7 @@ for manifest in "$here/rocks.spotifast.Spotifast.yml" "$here/rocks.spotifast.Spo
   "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec "$write_marker"
   "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec "$read_marker"
   # Newer Flatpak must see the same data through its XDG_STATE_HOME too.
-  "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec 'if test -n "${XDG_STATE_HOME:-}"; then test "$(cat "$XDG_STATE_HOME/spotifast/probe")" = state-probe; fi'
-  "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec 'rm "$HOME/.local/state/spotifast/probe"'
+  "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec 'if test -n "${XDG_STATE_HOME:-}"; then test "$(cat "$XDG_STATE_HOME/swiftspot/probe")" = state-probe; fi'
+  "${build[@]}" "${persistence[@]}" "$probe_dir/build" sh -ec 'rm "$HOME/.local/state/swiftspot/probe"'
   echo "PASS: $(basename "$manifest") retains state across launches"
 done

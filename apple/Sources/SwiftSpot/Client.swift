@@ -24,7 +24,7 @@ final class Client: @unchecked Sendable {
             return path
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return support.appendingPathComponent("me.paolino.spotifast/api.sock").path
+        return support.appendingPathComponent("com.hanzpo.swiftspot/api.sock").path
     }
 
     private let fd: Int32
